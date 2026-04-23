@@ -30,7 +30,7 @@ const AppLayout = () => {
       {/* macOS / Desktop Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <img src="/RamaLogo.png" alt="Rama Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+          <img src="RamaLogo.png" alt="Rama Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
           <span className="sidebar-title">EyeRAMAShift</span>
         </div>
         

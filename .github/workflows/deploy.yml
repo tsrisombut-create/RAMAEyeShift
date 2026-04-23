@@ -52,11 +52,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ids=$(gh api "repos/${{ github.repository }}/pages/deployments?status=in_progress" --jq '.[].id' 2>/dev/null || true)
-          for id in $ids; do
-            echo "Cancelling stuck Pages deployment $id"
-            gh api --method POST "repos/${{ github.repository }}/pages/deployments/$id/cancel" || true
-          done
+          gh api "repos/${{ github.repository }}/pages/deployments" \
+            --jq '.[] | .id' 2>/dev/null \
+          | while read -r id; do
+              echo "Cancelling Pages deployment: $id"
+              gh api --method POST \
+                "repos/${{ github.repository }}/pages/deployments/$id/cancel" \
+                --silent 2>/dev/null || true
+            done
 
       - name: Deploy to GitHub Pages
         id: deployment

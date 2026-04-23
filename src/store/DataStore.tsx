@@ -77,74 +77,66 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── MUTATIONS (each calls syncToCloud explicitly) ───────────────────────────
+  // NOTE: syncToCloud must NOT be called inside setState updater functions because
+  // React 18 concurrent mode may replay updaters multiple times. Compute next state
+  // outside the updater, then call setX(next) and syncToCloud together.
+
   const addDoctor = (doctor: Doctor) => {
-    setDoctors(prev => {
-      const next = [...prev, doctor];
-      syncToCloud(next, schedules, holidays);
-      return next;
-    });
+    const next = [...doctors, doctor];
+    setDoctors(next);
+    syncToCloud(next, schedules, holidays);
   };
 
   const updateDoctor = (doctor: Doctor) => {
-    setDoctors(prev => {
-      const next = prev.map(d => d.id === doctor.id ? doctor : d);
-      syncToCloud(next, schedules, holidays);
-      return next;
-    });
+    const next = doctors.map(d => d.id === doctor.id ? doctor : d);
+    setDoctors(next);
+    syncToCloud(next, schedules, holidays);
   };
 
   const deleteDoctor = (id: string) => {
-    setDoctors(prev => {
-      const next = prev.filter(d => d.id !== id);
-      syncToCloud(next, schedules, holidays);
-      return next;
-    });
+    const next = doctors.filter(d => d.id !== id);
+    setDoctors(next);
+    syncToCloud(next, schedules, holidays);
   };
 
   const addHoliday = (holiday: PublicHoliday) => {
-    setHolidays(prev => {
-      const next = [...prev, holiday];
-      syncToCloud(doctors, schedules, next);
-      return next;
-    });
+    const next = [...holidays, holiday];
+    setHolidays(next);
+    syncToCloud(doctors, schedules, next);
   };
 
   const deleteHoliday = (id: string) => {
-    setHolidays(prev => {
-      const next = prev.filter(h => h.id !== id);
-      syncToCloud(doctors, schedules, next);
-      return next;
-    });
+    const next = holidays.filter(h => h.id !== id);
+    setHolidays(next);
+    syncToCloud(doctors, schedules, next);
   };
 
   const setHolidaysWithSync = (updater: React.SetStateAction<PublicHoliday[]>) => {
-    setHolidays(prev => {
-      const next = typeof updater === 'function' ? (updater as (prev: PublicHoliday[]) => PublicHoliday[])(prev) : updater;
-      syncToCloud(doctors, schedules, next);
-      return next;
-    });
+    const next = typeof updater === 'function'
+      ? (updater as (prev: PublicHoliday[]) => PublicHoliday[])(holidays)
+      : updater;
+    setHolidays(next);
+    syncToCloud(doctors, schedules, next);
   };
 
   const updateAssignment = (scheduleId: string, day: number, doctorId: string | null) => {
-    setSchedules(prev => {
-      const copy = [...prev];
-      const sIndex = copy.findIndex(s => s.id === scheduleId);
-      if (sIndex < 0) return prev;
+    const copy = [...schedules];
+    const sIndex = copy.findIndex(s => s.id === scheduleId);
+    if (sIndex < 0) return;
 
-      const newSchedule = { ...copy[sIndex], assignments: [...copy[sIndex].assignments] };
-      const aIndex = newSchedule.assignments.findIndex(a => a.day === day);
-      if (aIndex < 0) return prev;
+    const newSchedule = { ...copy[sIndex], assignments: [...copy[sIndex].assignments] };
+    const aIndex = newSchedule.assignments.findIndex(a => a.day === day);
+    if (aIndex < 0) return;
 
-      newSchedule.assignments[aIndex] = {
-        ...newSchedule.assignments[aIndex],
-        doctorId,
-        isManualOverride: true
-      };
+    newSchedule.assignments[aIndex] = {
+      ...newSchedule.assignments[aIndex],
+      doctorId,
+      isManualOverride: true
+    };
 
-      copy[sIndex] = newSchedule;
-      syncToCloud(doctors, copy, holidays);
-      return copy;
-    });
+    copy[sIndex] = newSchedule;
+    setSchedules(copy);
+    syncToCloud(doctors, copy, holidays);
   };
 
   // generateSchedule implementation
@@ -202,38 +194,32 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       createdAt: new Date()
     };
 
-    setSchedules(prev => {
-      const filtered = prev.filter(s => {
-        const isSameTime = s.month === month && s.year === year;
-        const sYearSet = [...s.selectedYears].sort().join(',');
-        return !(isSameTime && sYearSet === currentYearSet);
-      });
-      const next = [...filtered, schedule];
-      syncToCloud(doctors, next, holidays);
-      return next;
+    const filtered = schedules.filter(s => {
+      const isSameTime = s.month === month && s.year === year;
+      const sYearSet = [...s.selectedYears].sort().join(',');
+      return !(isSameTime && sYearSet === currentYearSet);
     });
+    const nextSchedules = [...filtered, schedule];
+    setSchedules(nextSchedules);
+    syncToCloud(doctors, nextSchedules, holidays);
 
     return schedule;
   };
 
   const deleteSchedule = (month: number, year: number) => {
-    setSchedules(prev => {
-      const next = prev.filter(s => s.month !== month || s.year !== year);
-      syncToCloud(doctors, next, holidays);
-      return next;
-    });
+    const next = schedules.filter(s => s.month !== month || s.year !== year);
+    setSchedules(next);
+    syncToCloud(doctors, next, holidays);
   };
 
   const deleteScheduleByYear = (month: number, year: number, residencyYear: ResidencyYear) => {
-    setSchedules(prev => {
-      const next = prev.filter(s => {
-        const isSameTime = s.month === month && s.year === year;
-        const containsYear = s.selectedYears.includes(residencyYear);
-        return !(isSameTime && containsYear);
-      });
-      syncToCloud(doctors, next, holidays);
-      return next;
+    const next = schedules.filter(s => {
+      const isSameTime = s.month === month && s.year === year;
+      const containsYear = s.selectedYears.includes(residencyYear);
+      return !(isSameTime && containsYear);
     });
+    setSchedules(next);
+    syncToCloud(doctors, next, holidays);
   };
 
   const engMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];

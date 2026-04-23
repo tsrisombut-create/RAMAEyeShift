@@ -117,6 +117,14 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   };
 
+  const setHolidaysWithSync = (updater: React.SetStateAction<PublicHoliday[]>) => {
+    setHolidays(prev => {
+      const next = typeof updater === 'function' ? (updater as (prev: PublicHoliday[]) => PublicHoliday[])(prev) : updater;
+      syncToCloud(doctors, schedules, next);
+      return next;
+    });
+  };
+
   const updateAssignment = (scheduleId: string, day: number, doctorId: string | null) => {
     setSchedules(prev => {
       const copy = [...prev];
@@ -289,7 +297,7 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     <DataStoreContext.Provider value={{
       doctors, schedules, holidays,
       addDoctor, updateDoctor, deleteDoctor,
-      addHoliday, deleteHoliday, setHolidays,
+      addHoliday, deleteHoliday, setHolidays: setHolidaysWithSync,
       generateSchedule, deleteSchedule, deleteScheduleByYear, updateAssignment,
       generateLineMessage, generateCombinedCSV
     }}>

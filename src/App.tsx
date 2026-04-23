@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { BarChart3, LayoutGrid, CalendarDays, Users, CalendarOff, Sun, Moon } from 'lucide-react';
 import './App.css';
 
@@ -96,9 +96,9 @@ import { DataStoreProvider } from './store/DataStore';
 function App() {
   return (
     <DataStoreProvider>
-      <BrowserRouter>
+      <HashRouter>
         <AppLayout />
-      </BrowserRouter>
+      </HashRouter>
     </DataStoreProvider>
   );
 }

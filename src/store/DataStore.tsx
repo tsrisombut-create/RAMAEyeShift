@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { ResidencyYear, type Doctor, type ShiftSchedule, type PublicHoliday } from '../models';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -27,21 +27,19 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [schedules, setSchedules] = useState<ShiftSchedule[]>([]);
   const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
 
-  // This ref is false during the initial cloud load to prevent syncToCloud
-  // from firing on intermediate state updates (setDoctors, setSchedules, setHolidays
-  // each trigger a re-render, which would POST partial data back to GAS causing duplication).
-  const isLoaded = useRef(false);
-  
   // Use Vite env variable for the deployed Apps Script URL
   const GAS_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || "";
 
-  // Upload state to Google Sheets automatically when changes happen
+  // ─── SYNC ────────────────────────────────────────────────────────────────────
+  // syncToCloud is called EXPLICITLY inside each user-mutation function.
+  // It is NEVER called reactively via useEffect so that:
+  //  1. A failed cloud load that falls back to seed data never overwrites GAS.
+  //  2. The initial load itself never triggers a write-back.
   const syncToCloud = async (d: Doctor[], s: ShiftSchedule[], h: PublicHoliday[]) => {
     if (!GAS_URL) return;
     try {
       await fetch(GAS_URL, {
         method: "POST",
-        // 'text/plain' disables CORS pre-flight checks which Apps Script blocks
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ doctors: d, schedules: s, holidays: h }),
         redirect: "follow",
@@ -51,68 +49,72 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // Fetch initial state from Google Sheets on load
-  const loadFromCloud = async () => {
-    if (!GAS_URL) return false;
-    try {
-      const res = await fetch(GAS_URL, { redirect: "follow" });
-      const data = await res.json();
-      // Batch all state updates before marking as loaded so the sync
-      // effect does not fire on each individual setter call.
-      if (data.doctors) setDoctors(data.doctors);
-      if (data.schedules) setSchedules(data.schedules);
-      if (data.holidays) setHolidays(data.holidays);
-      return true;
-    } catch (err) {
-      console.error("Google Sheets Load Error:", err);
-      return false;
+  // ─── LOAD ────────────────────────────────────────────────────────────────────
+  // On mount: fetch data from Google Sheets.
+  // If GAS_URL is missing OR the fetch fails → stay with empty state (no seed,
+  // no write-back). Seed data is only for local dev when GAS_URL is not set.
+  useEffect(() => {
+    if (!GAS_URL) {
+      // Local dev only: set placeholder doctors so the UI isn't blank.
+      setDoctors([
+        { id: uuidv4(), name: "Dr. Patchara", residencyYear: ResidencyYear.year3, offDays: [2, 3, 4], blackoutPeriods: [] },
+        { id: uuidv4(), name: "Dr. Thanasit", residencyYear: ResidencyYear.year3, offDays: [4, 5, 6], blackoutPeriods: [{ id: uuidv4(), startDay: 1, endDay: 3 }] },
+      ]);
+      return; // No GAS_URL → nothing to sync, stop here.
     }
-  };
+    fetch(GAS_URL, { redirect: "follow" })
+      .then(res => res.json())
+      .then(data => {
+        if (data.doctors)  setDoctors(data.doctors);
+        if (data.schedules) setSchedules(data.schedules);
+        if (data.holidays)  setHolidays(data.holidays);
+      })
+      .catch(err => {
+        // Load failed — leave state empty so we don't accidentally
+        // overwrite cloud data with seed/empty data.
+        console.error("Google Sheets Load Error:", err);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load Setup from Cloud or Fallback to Memory.
-  // isLoaded stays false until this completes, preventing syncToCloud
-  // from firing on the intermediate state changes caused by setDoctors /
-  // setSchedules / setHolidays above.
-  useEffect(() => {
-    loadFromCloud().then((loaded) => {
-      if (!loaded && doctors.length === 0) {
-        setDoctors([
-          { id: uuidv4(), name: "Dr. Patchara", residencyYear: ResidencyYear.year3, offDays: [2, 3, 4], blackoutPeriods: [] },
-          { id: uuidv4(), name: "Dr. Thanasit", residencyYear: ResidencyYear.year3, offDays: [4, 5, 6], blackoutPeriods: [{ id: uuidv4(), startDay: 1, endDay: 3 }] },
-        ]);
-      }
-      // Mark load complete — sync effect will now be allowed to fire
-      isLoaded.current = true;
-    });
-  }, []);
-
-  // Sync to cloud whenever state mutates, but ONLY after the initial
-  // load is complete. Without this guard, the three setX() calls inside
-  // loadFromCloud each trigger this effect with partial/incomplete data,
-  // which can cause the GAS backend to receive and store duplicate entries.
-  useEffect(() => {
-    if (!isLoaded.current) return;
-    if (doctors.length > 0) syncToCloud(doctors, schedules, holidays);
-  }, [doctors, schedules, holidays]);
-
+  // ─── MUTATIONS (each calls syncToCloud explicitly) ───────────────────────────
   const addDoctor = (doctor: Doctor) => {
-    setDoctors(prev => [...prev, doctor]);
+    setDoctors(prev => {
+      const next = [...prev, doctor];
+      syncToCloud(next, schedules, holidays);
+      return next;
+    });
   };
 
   const updateDoctor = (doctor: Doctor) => {
-    setDoctors(prev => prev.map(d => d.id === doctor.id ? doctor : d));
+    setDoctors(prev => {
+      const next = prev.map(d => d.id === doctor.id ? doctor : d);
+      syncToCloud(next, schedules, holidays);
+      return next;
+    });
   };
 
   const deleteDoctor = (id: string) => {
-    setDoctors(prev => prev.filter(d => d.id !== id));
+    setDoctors(prev => {
+      const next = prev.filter(d => d.id !== id);
+      syncToCloud(next, schedules, holidays);
+      return next;
+    });
   };
 
   const addHoliday = (holiday: PublicHoliday) => {
-    setHolidays(prev => [...prev, holiday]);
+    setHolidays(prev => {
+      const next = [...prev, holiday];
+      syncToCloud(doctors, schedules, next);
+      return next;
+    });
   };
 
   const deleteHoliday = (id: string) => {
-    setHolidays(prev => prev.filter(h => h.id !== id));
+    setHolidays(prev => {
+      const next = prev.filter(h => h.id !== id);
+      syncToCloud(doctors, schedules, next);
+      return next;
+    });
   };
 
   const updateAssignment = (scheduleId: string, day: number, doctorId: string | null) => {
@@ -120,18 +122,19 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const copy = [...prev];
       const sIndex = copy.findIndex(s => s.id === scheduleId);
       if (sIndex < 0) return prev;
-      
+
       const newSchedule = { ...copy[sIndex], assignments: [...copy[sIndex].assignments] };
       const aIndex = newSchedule.assignments.findIndex(a => a.day === day);
       if (aIndex < 0) return prev;
-      
+
       newSchedule.assignments[aIndex] = {
         ...newSchedule.assignments[aIndex],
         doctorId,
         isManualOverride: true
       };
-      
+
       copy[sIndex] = newSchedule;
+      syncToCloud(doctors, copy, holidays);
       return copy;
     });
   };
@@ -197,22 +200,32 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const sYearSet = [...s.selectedYears].sort().join(',');
         return !(isSameTime && sYearSet === currentYearSet);
       });
-      return [...filtered, schedule];
+      const next = [...filtered, schedule];
+      syncToCloud(doctors, next, holidays);
+      return next;
     });
 
     return schedule;
   };
 
   const deleteSchedule = (month: number, year: number) => {
-    setSchedules(prev => prev.filter(s => s.month !== month || s.year !== year));
+    setSchedules(prev => {
+      const next = prev.filter(s => s.month !== month || s.year !== year);
+      syncToCloud(doctors, next, holidays);
+      return next;
+    });
   };
 
   const deleteScheduleByYear = (month: number, year: number, residencyYear: ResidencyYear) => {
-    setSchedules(prev => prev.filter(s => {
-      const isSameTime = s.month === month && s.year === year;
-      const containsYear = s.selectedYears.includes(residencyYear);
-      return !(isSameTime && containsYear);
-    }));
+    setSchedules(prev => {
+      const next = prev.filter(s => {
+        const isSameTime = s.month === month && s.year === year;
+        const containsYear = s.selectedYears.includes(residencyYear);
+        return !(isSameTime && containsYear);
+      });
+      syncToCloud(doctors, next, holidays);
+      return next;
+    });
   };
 
   const engMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];

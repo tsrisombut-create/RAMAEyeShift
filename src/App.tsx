@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { BarChart3, LayoutGrid, CalendarDays, Users, CalendarOff, Sun, Moon } from 'lucide-react';
 import './App.css';
 

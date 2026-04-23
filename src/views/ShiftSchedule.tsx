@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useDataStore } from '../store/DataStore';
 import { ResidencyYear, residencyYearBadgeColor, residencyYearShortName, getDoctorInitial } from '../models';
 import type { Doctor, ShiftSchedule } from '../models';
-import { BarChart3, Shuffle, Trash2, CalendarX, X, MessageSquare, Download, CheckCircle2, ChevronRight, UserX, Check, AlertCircle, Copy } from 'lucide-react';
+import { BarChart3, Shuffle, Trash2, CalendarX, X, MessageSquare, Download, CheckCircle2, UserX, Check, AlertCircle, Copy } from 'lucide-react';
 
 export default function ShiftScheduleView() {
   const { schedules, generateSchedule, deleteSchedule, deleteScheduleByYear, updateAssignment, doctors, generateLineMessage, generateCombinedCSV, holidays } = useDataStore();
@@ -405,7 +405,6 @@ export default function ShiftScheduleView() {
 
   const renderLineModal = () => {
     if (!showLineModal) return null;
-    const msg = generateLineMessage(currentSchedules);
     return createPortal(
       <div 
         onClick={() => setShowLineModal(false)}

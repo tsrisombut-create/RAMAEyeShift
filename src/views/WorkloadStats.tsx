@@ -1,7 +1,7 @@
 import { useState, useMemo, Fragment } from 'react';
 import { useDataStore } from '../store/DataStore';
 import { ResidencyYear, residencyYearBadgeColor, residencyYearShortName, getDoctorInitial } from '../models';
-import { BarChart3, TrendingUp, Calendar, ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
 
 export default function WorkloadStats() {
   const { doctors, schedules, holidays } = useDataStore();

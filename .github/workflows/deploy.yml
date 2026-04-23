@@ -48,6 +48,16 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Cancel stale Pages deployments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ids=$(gh api "repos/${{ github.repository }}/pages/deployments?status=in_progress" --jq '.[].id' 2>/dev/null || true)
+          for id in $ids; do
+            echo "Cancelling stuck Pages deployment $id"
+            gh api --method POST "repos/${{ github.repository }}/pages/deployments/$id/cancel" || true
+          done
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

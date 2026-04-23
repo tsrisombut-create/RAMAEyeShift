@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { ResidencyYear, type Doctor, type ShiftSchedule, type PublicHoliday } from '../models';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -26,6 +26,11 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [schedules, setSchedules] = useState<ShiftSchedule[]>([]);
   const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
+
+  // This ref is false during the initial cloud load to prevent syncToCloud
+  // from firing on intermediate state updates (setDoctors, setSchedules, setHolidays
+  // each trigger a re-render, which would POST partial data back to GAS causing duplication).
+  const isLoaded = useRef(false);
   
   // Use Vite env variable for the deployed Apps Script URL
   const GAS_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || "";
@@ -52,6 +57,8 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const res = await fetch(GAS_URL, { redirect: "follow" });
       const data = await res.json();
+      // Batch all state updates before marking as loaded so the sync
+      // effect does not fire on each individual setter call.
       if (data.doctors) setDoctors(data.doctors);
       if (data.schedules) setSchedules(data.schedules);
       if (data.holidays) setHolidays(data.holidays);
@@ -62,7 +69,10 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // Load Setup from Cloud or Fallback to Memory
+  // Load Setup from Cloud or Fallback to Memory.
+  // isLoaded stays false until this completes, preventing syncToCloud
+  // from firing on the intermediate state changes caused by setDoctors /
+  // setSchedules / setHolidays above.
   useEffect(() => {
     loadFromCloud().then((loaded) => {
       if (!loaded && doctors.length === 0) {
@@ -71,11 +81,17 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           { id: uuidv4(), name: "Dr. Thanasit", residencyYear: ResidencyYear.year3, offDays: [4, 5, 6], blackoutPeriods: [{ id: uuidv4(), startDay: 1, endDay: 3 }] },
         ]);
       }
+      // Mark load complete — sync effect will now be allowed to fire
+      isLoaded.current = true;
     });
   }, []);
 
-  // Sync to cloud whenever state mutates
+  // Sync to cloud whenever state mutates, but ONLY after the initial
+  // load is complete. Without this guard, the three setX() calls inside
+  // loadFromCloud each trigger this effect with partial/incomplete data,
+  // which can cause the GAS backend to receive and store duplicate entries.
   useEffect(() => {
+    if (!isLoaded.current) return;
     if (doctors.length > 0) syncToCloud(doctors, schedules, holidays);
   }, [doctors, schedules, holidays]);
 

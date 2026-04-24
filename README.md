@@ -1,73 +1,49 @@
-# React + TypeScript + Vite
+# RAMAEyeShift
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A premium, web-based Ophthalmology Resident Scheduling and OR Management System. Originally conceived as a SwiftUI application, this platform has been transformed into a high-performance web experience designed for clinical staff at Ramathibodi Hospital.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Resident Scheduling**: Automated and manual shift management for R1, R2, and R3 residents.
+- **OR Management**: High-density board for tracking surgical operations and staff assignments.
+- **Holiday Integration**: Intelligent handling of public holidays and custom staff leave.
+- **Data Sync**: Real-time integration with Google Sheets for robust backend persistence.
+- **Smart Exports**: Generate schedule strings for LINE or export comprehensive data via CSV.
+- **Premium UI**: Modern glassmorphic design system using *Plus Jakarta Sans* typography.
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend**: React + TypeScript + Vite
+- **Styling**: Vanilla CSS (Custom Design System)
+- **Deployment**: GitHub Pages (Automated via Actions)
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
+- Node.js (v18+)
+- npm or yarn
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Installation
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Create a `.env` file with your Google Sheets API credentials (see `.env.example`).
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Development
+```bash
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## PWA Support
+RAMAEyeShift is built as a Progressive Web App. You can add it to your Home Screen on iOS or Android for a native-like app experience.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Support
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+For any issues or questions, please contact:
+- **Thansit Srisombut**
+- Email: [tsrisombut@gmail.com](mailto:tsrisombut@gmail.com)
+
+---
+*Built for the Department of Ophthalmology, Ramathibodi Hospital.*

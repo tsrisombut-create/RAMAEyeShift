@@ -30,6 +30,12 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Use Vite env variable for the deployed Apps Script URL
   const GAS_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || "";
 
+  // DEBUG: Log the URL on mount
+  useEffect(() => {
+    console.log("🔍 GAS_URL:", GAS_URL);
+    console.log("🔍 VITE_GOOGLE_SHEETS_URL env:", import.meta.env.VITE_GOOGLE_SHEETS_URL);
+  }, []);
+
   // ─── SYNC ────────────────────────────────────────────────────────────────────
   // syncToCloud is called EXPLICITLY inside each user-mutation function.
   // It is NEVER called reactively via useEffect so that:
@@ -55,6 +61,7 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // no write-back). Seed data is only for local dev when GAS_URL is not set.
   useEffect(() => {
     if (!GAS_URL) {
+      console.log("⚠️  No GAS_URL set — using placeholder data");
       // Local dev only: set placeholder doctors so the UI isn't blank.
       setDoctors([
         { id: uuidv4(), name: "Dr. Patchara", residencyYear: ResidencyYear.year3, offDays: [2, 3, 4], blackoutPeriods: [] },
@@ -62,9 +69,14 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ]);
       return; // No GAS_URL → nothing to sync, stop here.
     }
+    console.log("📡 Fetching from Google Sheets:", GAS_URL);
     fetch(GAS_URL, { redirect: "follow" })
-      .then(res => res.json())
+      .then(res => {
+        console.log("✅ Fetch response status:", res.status);
+        return res.json();
+      })
       .then(data => {
+        console.log("✅ Data loaded:", data);
         if (data.doctors)  setDoctors(data.doctors);
         if (data.schedules) setSchedules(data.schedules);
         if (data.holidays)  setHolidays(data.holidays);
@@ -72,7 +84,7 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       .catch(err => {
         // Load failed — leave state empty so we don't accidentally
         // overwrite cloud data with seed/empty data.
-        console.error("Google Sheets Load Error:", err);
+        console.error("❌ Google Sheets Load Error:", err);
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -27,13 +27,28 @@ const AppLayout = () => {
 
   return (
     <div className="layout-container">
-      {/* macOS / Desktop Sidebar */}
+      {/* Mobile-only top header */}
+      <header className="mobile-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img src="RamaLogo.png" alt="Rama Logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
+          <span className="sidebar-title" style={{ fontSize: '0.9rem' }}>EyeRAMAShift</span>
+        </div>
+        <button
+          className="theme-toggle-btn"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          aria-label="Toggle theme"
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
+      </header>
+
+      {/* Desktop Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <img src="RamaLogo.png" alt="Rama Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
           <span className="sidebar-title">EyeRAMAShift</span>
         </div>
-        
+
         <nav className="nav-links">
           {navItems.map((item) => (
             <NavLink
@@ -48,9 +63,9 @@ const AppLayout = () => {
         </nav>
 
         <div style={{ marginTop: 'auto', padding: '16px', display: 'flex', justifyContent: 'center' }}>
-           <button 
+           <button
              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-             style={{ 
+             style={{
                display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px',
                background: 'rgba(0,0,0,0.05)', border: 'none', borderRadius: '12px',
                color: 'var(--text-main)', cursor: 'pointer', fontWeight: '600', fontSize: '13px'

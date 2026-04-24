@@ -17,7 +17,7 @@
   --bg-main: #031727;
   --bg-card: #0A263D;
   --text-main: #E6F7F5;
-  --text-muted: #88B2B0;
+  --text-muted: #9ECCC9;
   --border: #123A50;
   --radius: 16px;
 }
@@ -49,6 +49,7 @@ body {
 .layout-container {
   display: flex;
   height: 100vh;
+  height: 100dvh; /* iOS 15.4+: adjusts when browser chrome appears/disappears */
   width: 100vw;
   overflow: hidden;
 }
@@ -155,6 +156,40 @@ body {
   background: var(--bg-main) !important;
 }
 
+/* Mobile Header (top bar — hidden on desktop) */
+.mobile-header {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(56px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+  background: var(--bg-card);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+  padding-left: 16px;
+  padding-right: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary-glow);
+  color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 /* Mobile Nav (Bottom) */
 .mobile-nav {
   display: none;
@@ -162,15 +197,18 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 84px;
+  height: calc(56px + env(safe-area-inset-bottom));
   background: var(--bg-card);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border-top: 1px solid var(--border);
   z-index: 100;
   justify-content: space-around;
-  align-items: center;
-  padding: 0 12px 24px;
+  align-items: flex-start;
+  padding-top: 8px;
+  padding-left: 4px;
+  padding-right: 4px;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .mobile-nav-item {
@@ -178,15 +216,15 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  height: 100%;
   flex: 1;
-  border-radius: 16px;
+  border-radius: 12px;
   transition: all 0.2s ease;
+  padding: 4px 2px;
 }
 
 .mobile-nav-item.active {
@@ -202,12 +240,16 @@ body {
   .sidebar {
     display: none;
   }
+  .mobile-header {
+    display: flex;
+  }
   .mobile-nav {
     display: flex;
   }
   .main-content {
-    padding: 24px;
-    padding-bottom: 104px; 
+    padding: 16px;
+    padding-top: calc(56px + env(safe-area-inset-top) + 16px);
+    padding-bottom: calc(56px + env(safe-area-inset-bottom) + 16px);
   }
 }
 

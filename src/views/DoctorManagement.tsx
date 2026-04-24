@@ -336,18 +336,18 @@ export default function DoctorManagement() {
               
               {/* Name Field */}
               <div>
-                <label style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>Doctor Name</label>
-                <input 
-                  value={name} 
-                  onChange={e => setName(e.target.value)} 
+                <label style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)', display: 'block', marginBottom: '8px' }}>Doctor Name</label>
+                <input
+                  value={name}
+                  onChange={e => setName(e.target.value)}
                   placeholder="E.g. Dr. Thanasit"
-                  style={{ width: '100%', padding: '14px', borderRadius: '10px', border: 'none', background: 'var(--bg-card)', fontSize: '16px', outline: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }} 
+                  style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-main)', fontSize: '16px', outline: 'none' }}
                 />
               </div>
 
               {/* Residency Year Field */}
               <div>
-                <label style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>Residency Year</label>
+                <label style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)', display: 'block', marginBottom: '8px' }}>Residency Year</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {[ResidencyYear.year1, ResidencyYear.year2, ResidencyYear.year3].map(ry => {
                      const isSel = residencyYear === ry;
@@ -367,7 +367,7 @@ export default function DoctorManagement() {
 
               {/* Off Days */}
               <div>
-                <label style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>Regular Off Days</label>
+                <label style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)', display: 'block', marginBottom: '8px' }}>Regular Off Days</label>
                 
                 {/* Patterns */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
@@ -376,12 +376,12 @@ export default function DoctorManagement() {
                     return (
                       <button key={t.name} onClick={() => setTeamOffDays(t.days)} style={{
                         padding: '10px', borderRadius: '10px', background: isSel ? t.bg : `${t.bg}99`,
-                        border: isSel ? `2.5px solid ${t.bg}` : '2.5px solid transparent', // Match swift logic
-                        textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', 
-                        boxShadow: isSel ? `0 0 0 1px ${t.text}` : 'none' // Inner active look
+                        border: isSel ? `2.5px solid ${t.bg}` : '2.5px solid transparent',
+                        textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                        boxShadow: isSel ? `0 0 0 1px ${t.text}` : 'none'
                       }}>
                         <span style={{ fontWeight: '600', color: t.text, fontSize: '13px' }}>{t.name}</span>
-                        <span style={{ fontSize: '10px', color: '#4A4A6A' }}>Off: {t.days.map(dayOfWeekShortname).join(', ')}</span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Off: {t.days.map(dayOfWeekShortname).join(', ')}</span>
                       </button>
                     )
                   })}
@@ -414,17 +414,17 @@ export default function DoctorManagement() {
 
               {/* Blackouts */}
               <div>
-                <label style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>Blackout Periods</label>
+                <label style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)', display: 'block', marginBottom: '8px' }}>Blackout Periods</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {blackouts.map((b, i) => (
                     <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <input type="number" value={b.startDay} onChange={e => {
                         const nb = [...blackouts]; nb[i].startDay = Number(e.target.value); setBlackouts(nb);
-                      }} style={{ width: '64px', padding: '12px', borderRadius: '10px', border: 'none', background: 'var(--bg-card)', textAlign: 'center', fontSize: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }} />
+                      }} style={{ width: '64px', padding: '12px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-main)', textAlign: 'center', fontSize: '16px' }} />
                       <span style={{ color: 'var(--text-muted)', fontSize: '14px' }}>to</span>
                       <input type="number" value={b.endDay} onChange={e => {
                         const nb = [...blackouts]; nb[i].endDay = Number(e.target.value); setBlackouts(nb);
-                      }} style={{ width: '64px', padding: '12px', borderRadius: '10px', border: 'none', background: 'var(--bg-card)', textAlign: 'center', fontSize: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }} />
+                      }} style={{ width: '64px', padding: '12px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-main)', textAlign: 'center', fontSize: '16px' }} />
                       <div style={{ flex: 1 }} />
                       <button onClick={() => setBlackouts(blackouts.filter((_, idx) => idx !== i))} style={{ background: '#FFD6D6', color: '#E74C3C', border: 'none', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                          <Trash2 size={16} strokeWidth={2.5} />

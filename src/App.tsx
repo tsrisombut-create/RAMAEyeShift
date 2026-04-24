@@ -21,7 +21,7 @@ const AppLayout = () => {
     { path: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
     { path: '/schedule', label: 'Shift Table', icon: CalendarDays },
     { path: '/analytics', label: 'Analytics', icon: BarChart3 },
-    { path: '/doctors', label: 'Manage Doctors', icon: Users },
+    { path: '/doctors', label: 'Doctors', icon: Users },
     { path: '/holidays', label: 'Public Holidays', icon: CalendarOff },
   ];
 

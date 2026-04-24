@@ -12,6 +12,8 @@ export default function DoctorManagement() {
   const [searchText, setSearchText] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<Doctor | null>(null);
+  const [touchStartY, setTouchStartY] = useState(0);
+  const [modalTranslate, setModalTranslate] = useState(0);
 
   // Form State
   const [name, setName] = useState('');
@@ -309,12 +311,25 @@ export default function DoctorManagement() {
             overflowY: 'auto'
           }}
         >
-          <div 
+          <div
             onClick={e => e.stopPropagation()}
+            onTouchStart={(e) => setTouchStartY(e.touches[0].clientY)}
+            onTouchMove={(e) => {
+              const diff = e.touches[0].clientY - touchStartY;
+              if (diff > 0) setModalTranslate(diff);
+            }}
+            onTouchEnd={() => {
+              if (modalTranslate > 120) {
+                setIsModalOpen(false);
+              }
+              setModalTranslate(0);
+            }}
             style={{
-              background: 'var(--bg-card)', width: '100%', maxWidth: '520px', 
+              background: 'var(--bg-card)', width: '100%', maxWidth: '520px',
               borderRadius: '24px', maxHeight: 'none', display: 'flex', flexDirection: 'column',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.2)', margin: 'auto'
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)', margin: 'auto',
+              transform: `translateY(${modalTranslate}px)`,
+              transition: modalTranslate === 0 ? 'transform 0.2s ease-out' : 'none'
             }}
           >
 

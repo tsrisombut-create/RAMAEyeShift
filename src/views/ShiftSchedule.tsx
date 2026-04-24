@@ -13,7 +13,9 @@ export default function ShiftScheduleView() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [selectedYears, setSelectedYears] = useState<Set<ResidencyYear>>(new Set([ResidencyYear.year1]));
-  
+  const [touchStartY, setTouchStartY] = useState(0);
+  const [modalTranslate, setModalTranslate] = useState(0);
+
   const [editTarget, setEditTarget] = useState<{ schedule: ShiftSchedule, day: number } | null>(null);
   const [showLineModal, setShowLineModal] = useState(false);
   const [forceConfirmTarget, setForceConfirmTarget] = useState<{ doc: Doctor, reason: string } | null>(null);
@@ -286,9 +288,20 @@ export default function ShiftScheduleView() {
         onClick={() => { if(pendingForceId) setPendingForceId(null); else setEditTarget(null); }}
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', zIndex: 9999, animation: 'fadeIn 0.2s', padding: '40px 16px', overflowY: 'auto' }}
       >
-         <div 
+         <div
            onClick={e => e.stopPropagation()}
-           style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '520px', borderRadius: '24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', margin: 'auto' }}
+           onTouchStart={(e) => setTouchStartY(e.touches[0].clientY)}
+           onTouchMove={(e) => {
+             const diff = e.touches[0].clientY - touchStartY;
+             if (diff > 0) setModalTranslate(diff);
+           }}
+           onTouchEnd={() => {
+             if (modalTranslate > 120) {
+               setEditTarget(null);
+             }
+             setModalTranslate(0);
+           }}
+           style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '520px', borderRadius: '24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', margin: 'auto', transform: `translateY(${modalTranslate}px)`, transition: modalTranslate === 0 ? 'transform 0.2s ease-out' : 'none' }}
          >
             <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>Swap Shift</h2>
@@ -406,13 +419,24 @@ export default function ShiftScheduleView() {
   const renderLineModal = () => {
     if (!showLineModal) return null;
     return createPortal(
-      <div 
+      <div
         onClick={() => setShowLineModal(false)}
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', zIndex: 9999, animation: 'fadeIn 0.2s', padding: '40px 16px', overflowY: 'auto' }}
       >
-         <div 
+         <div
            onClick={e => e.stopPropagation()}
-           style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '520px', borderRadius: '24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', margin: 'auto' }}
+           onTouchStart={(e) => setTouchStartY(e.touches[0].clientY)}
+           onTouchMove={(e) => {
+             const diff = e.touches[0].clientY - touchStartY;
+             if (diff > 0) setModalTranslate(diff);
+           }}
+           onTouchEnd={() => {
+             if (modalTranslate > 120) {
+               setShowLineModal(false);
+             }
+             setModalTranslate(0);
+           }}
+           style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '520px', borderRadius: '24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', margin: 'auto', transform: `translateY(${modalTranslate}px)`, transition: modalTranslate === 0 ? 'transform 0.2s ease-out' : 'none' }}
          >
             <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>LINE Export</h2>
@@ -479,9 +503,20 @@ export default function ShiftScheduleView() {
         onClick={() => setForceConfirmTarget(null)}
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', zIndex: 10000, animation: 'fadeIn 0.2s', padding: '40px 16px', overflowY: 'auto' }}
       >
-        <div 
+        <div
           onClick={e => e.stopPropagation()}
-          style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '400px', borderRadius: '28px', padding: '32px 24px', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', textAlign: 'center', margin: 'auto' }}
+          onTouchStart={(e) => setTouchStartY(e.touches[0].clientY)}
+          onTouchMove={(e) => {
+            const diff = e.touches[0].clientY - touchStartY;
+            if (diff > 0) setModalTranslate(diff);
+          }}
+          onTouchEnd={() => {
+            if (modalTranslate > 120) {
+              setForceConfirmTarget(null);
+            }
+            setModalTranslate(0);
+          }}
+          style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '400px', borderRadius: '28px', padding: '32px 24px', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', textAlign: 'center', margin: 'auto', transform: `translateY(${modalTranslate}px)`, transition: modalTranslate === 0 ? 'transform 0.2s ease-out' : 'none' }}
         >
           <div style={{ width: '64px', height: '64px', background: 'rgba(231, 76, 60, 0.1)', color: '#E74C3C', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
              <AlertCircle size={32} strokeWidth={2.5} />
@@ -511,9 +546,20 @@ export default function ShiftScheduleView() {
         onClick={() => setShowGenerateConfirm(false)}
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', zIndex: 10000, animation: 'fadeIn 0.2s', padding: '40px 16px', overflowY: 'auto' }}
       >
-        <div 
+        <div
           onClick={e => e.stopPropagation()}
-          style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '400px', borderRadius: '28px', padding: '32px 24px', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', textAlign: 'center', margin: 'auto' }}
+          onTouchStart={(e) => setTouchStartY(e.touches[0].clientY)}
+          onTouchMove={(e) => {
+            const diff = e.touches[0].clientY - touchStartY;
+            if (diff > 0) setModalTranslate(diff);
+          }}
+          onTouchEnd={() => {
+            if (modalTranslate > 120) {
+              setShowGenerateConfirm(false);
+            }
+            setModalTranslate(0);
+          }}
+          style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '400px', borderRadius: '28px', padding: '32px 24px', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', textAlign: 'center', margin: 'auto', transform: `translateY(${modalTranslate}px)`, transition: modalTranslate === 0 ? 'transform 0.2s ease-out' : 'none' }}
         >
           <div style={{ width: '64px', height: '64px', background: 'rgba(46, 91, 255, 0.1)', color: '#2E5BFF', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
              <Shuffle size={32} strokeWidth={2.5} />
@@ -555,9 +601,20 @@ export default function ShiftScheduleView() {
         onClick={() => setDeleteTarget(null)}
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', zIndex: 10000, animation: 'fadeIn 0.2s', padding: '40px 16px', overflowY: 'auto' }}
       >
-        <div 
+        <div
           onClick={e => e.stopPropagation()}
-          style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '400px', borderRadius: '28px', padding: '32px 24px', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', textAlign: 'center', margin: 'auto' }}
+          onTouchStart={(e) => setTouchStartY(e.touches[0].clientY)}
+          onTouchMove={(e) => {
+            const diff = e.touches[0].clientY - touchStartY;
+            if (diff > 0) setModalTranslate(diff);
+          }}
+          onTouchEnd={() => {
+            if (modalTranslate > 120) {
+              setDeleteTarget(null);
+            }
+            setModalTranslate(0);
+          }}
+          style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '400px', borderRadius: '28px', padding: '32px 24px', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', textAlign: 'center', margin: 'auto', transform: `translateY(${modalTranslate}px)`, transition: modalTranslate === 0 ? 'transform 0.2s ease-out' : 'none' }}
         >
           <div style={{ width: '64px', height: '64px', background: 'rgba(231, 76, 60, 0.1)', color: '#E74C3C', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
              <Trash2 size={32} strokeWidth={2.5} />

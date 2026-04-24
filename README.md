@@ -5,11 +5,10 @@ A premium, web-based Ophthalmology Resident Scheduling and OR Management System.
 ## Features
 
 - **Resident Scheduling**: Automated and manual shift management for R1, R2, and R3 residents.
-- **OR Management**: High-density board for tracking surgical operations and staff assignments.
-- **Holiday Integration**: Intelligent handling of public holidays and custom staff leave.
+- **Holiday Integration**: Handling of public holidays and custom staff leave.
 - **Data Sync**: Real-time integration with Google Sheets for robust backend persistence.
 - **Smart Exports**: Generate schedule strings for LINE or export comprehensive data via CSV.
-- **Premium UI**: Modern glassmorphic design system using *Plus Jakarta Sans* typography.
+- **UI**: Glassmorphic design system using *Plus Jakarta Sans* typography.
 
 ## Tech Stack
 
@@ -46,4 +45,4 @@ For any issues or questions, please contact:
 - Email: [tsrisombut@gmail.com](mailto:tsrisombut@gmail.com)
 
 ---
-*Built for the Department of Ophthalmology, Ramathibodi Hospital.*
+*Built for the Department of Ophthalmology, Faculty of Medicine, Ramathibodi Hospital.*

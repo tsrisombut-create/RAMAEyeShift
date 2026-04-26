@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { ResidencyYear, type Doctor, type ShiftSchedule, type PublicHoliday } from '../models';
 import { v4 as uuidv4 } from 'uuid';
+import { db } from '../firebase';
+import { collection, doc, getDocs, setDoc, deleteDoc, Timestamp, query, where } from 'firebase/firestore';
 
 interface DataStoreContextType {
   doctors: Doctor[];
@@ -13,6 +15,7 @@ interface DataStoreContextType {
   deleteHoliday: (id: string) => void;
   setHolidays: React.Dispatch<React.SetStateAction<PublicHoliday[]>>;
   generateSchedule: (month: number, year: number, selectedYears?: Set<ResidencyYear>) => ShiftSchedule;
+  generateSchedulesBatch: (month: number, year: number, yearSet: Set<ResidencyYear>) => Promise<void>;
   deleteSchedule: (month: number, year: number) => void;
   deleteScheduleByYear: (month: number, year: number, residencyYear: ResidencyYear) => void;
   updateAssignment: (scheduleId: string, day: number, doctorId: string | null) => void;
@@ -27,100 +30,75 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [schedules, setSchedules] = useState<ShiftSchedule[]>([]);
   const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
 
-  // Use Vite env variable for the deployed Apps Script URL
-  const GAS_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || "";
-
-  // DEBUG: Log the URL on mount
+  // ─── LOAD ────────────────────────────────────────────────────────────────────
+  // On mount: fetch data from Firestore collections
   useEffect(() => {
-    console.log("🔍 GAS_URL:", GAS_URL);
-    console.log("🔍 VITE_GOOGLE_SHEETS_URL env:", import.meta.env.VITE_GOOGLE_SHEETS_URL);
+    const loadData = async () => {
+      try {
+        const [doctorSnap, scheduleSnap, holidaySnap] = await Promise.all([
+          getDocs(collection(db, "doctors")),
+          getDocs(collection(db, "schedules")),
+          getDocs(collection(db, "holidays")),
+        ]);
+
+        setDoctors(doctorSnap.docs.map(d => d.data() as Doctor));
+        setSchedules(scheduleSnap.docs.map(d => {
+          const s = d.data();
+          return { ...s, createdAt: (s.createdAt as Timestamp).toDate() } as ShiftSchedule;
+        }));
+        setHolidays(holidaySnap.docs.map(d => {
+          const h = d.data();
+          return { ...h, date: (h.date as Timestamp).toDate() } as PublicHoliday;
+        }));
+      } catch (err) {
+        console.error("❌ Firestore Load Error:", err);
+      }
+    };
+
+    loadData();
   }, []);
 
-  // ─── SYNC ────────────────────────────────────────────────────────────────────
-  // syncToCloud is called EXPLICITLY inside each user-mutation function.
-  // It is NEVER called reactively via useEffect so that:
-  //  1. A failed cloud load that falls back to seed data never overwrites GAS.
-  //  2. The initial load itself never triggers a write-back.
-  const syncToCloud = async (d: Doctor[], s: ShiftSchedule[], h: PublicHoliday[]) => {
-    if (!GAS_URL) return;
-    try {
-      await fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ doctors: d, schedules: s, holidays: h }),
-        redirect: "follow",
-      });
-    } catch (err) {
-      console.error("Google Sheets Sync Error:", err);
-    }
-  };
-
-  // ─── LOAD ────────────────────────────────────────────────────────────────────
-  // On mount: fetch data from Google Sheets.
-  // If GAS_URL is missing OR the fetch fails → stay with empty state (no seed,
-  // no write-back). Seed data is only for local dev when GAS_URL is not set.
-  useEffect(() => {
-    if (!GAS_URL) {
-      console.log("⚠️  No GAS_URL set — using placeholder data");
-      // Local dev only: set placeholder doctors so the UI isn't blank.
-      setDoctors([
-        { id: uuidv4(), name: "Dr. Patchara", residencyYear: ResidencyYear.year3, offDays: [2, 3, 4], blackoutPeriods: [] },
-        { id: uuidv4(), name: "Dr. Thanasit", residencyYear: ResidencyYear.year3, offDays: [4, 5, 6], blackoutPeriods: [{ id: uuidv4(), startDay: 1, endDay: 3 }] },
-      ]);
-      return; // No GAS_URL → nothing to sync, stop here.
-    }
-    console.log("📡 Fetching from Google Sheets:", GAS_URL);
-    fetch(GAS_URL, { redirect: "follow" })
-      .then(res => {
-        console.log("✅ Fetch response status:", res.status);
-        return res.json();
-      })
-      .then(data => {
-        console.log("✅ Data loaded:", data);
-        if (data.doctors)  setDoctors(data.doctors);
-        if (data.schedules) setSchedules(data.schedules);
-        if (data.holidays)  setHolidays(data.holidays);
-      })
-      .catch(err => {
-        // Load failed — leave state empty so we don't accidentally
-        // overwrite cloud data with seed/empty data.
-        console.error("❌ Google Sheets Load Error:", err);
-      });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─── MUTATIONS (each calls syncToCloud explicitly) ───────────────────────────
-  // NOTE: syncToCloud must NOT be called inside setState updater functions because
-  // React 18 concurrent mode may replay updaters multiple times. Compute next state
-  // outside the updater, then call setX(next) and syncToCloud together.
+  // ─── MUTATIONS (each writes to Firestore) ───────────────────────────────────
 
   const addDoctor = (doctor: Doctor) => {
     const next = [...doctors, doctor];
     setDoctors(next);
-    syncToCloud(next, schedules, holidays);
+    setDoc(doc(db, "doctors", doctor.id), doctor).catch(err =>
+      console.error("Error adding doctor:", err)
+    );
   };
 
   const updateDoctor = (doctor: Doctor) => {
     const next = doctors.map(d => d.id === doctor.id ? doctor : d);
     setDoctors(next);
-    syncToCloud(next, schedules, holidays);
+    setDoc(doc(db, "doctors", doctor.id), doctor).catch(err =>
+      console.error("Error updating doctor:", err)
+    );
   };
 
   const deleteDoctor = (id: string) => {
     const next = doctors.filter(d => d.id !== id);
     setDoctors(next);
-    syncToCloud(next, schedules, holidays);
+    deleteDoc(doc(db, "doctors", id)).catch(err =>
+      console.error("Error deleting doctor:", err)
+    );
   };
 
   const addHoliday = (holiday: PublicHoliday) => {
     const next = [...holidays, holiday];
     setHolidays(next);
-    syncToCloud(doctors, schedules, next);
+    setDoc(doc(db, "holidays", holiday.id), {
+      ...holiday,
+      date: Timestamp.fromDate(holiday.date),
+    }).catch(err => console.error("Error adding holiday:", err));
   };
 
   const deleteHoliday = (id: string) => {
     const next = holidays.filter(h => h.id !== id);
     setHolidays(next);
-    syncToCloud(doctors, schedules, next);
+    deleteDoc(doc(db, "holidays", id)).catch(err =>
+      console.error("Error deleting holiday:", err)
+    );
   };
 
   const setHolidaysWithSync = (updater: React.SetStateAction<PublicHoliday[]>) => {
@@ -128,7 +106,12 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ? (updater as (prev: PublicHoliday[]) => PublicHoliday[])(holidays)
       : updater;
     setHolidays(next);
-    syncToCloud(doctors, schedules, next);
+    next.forEach(holiday => {
+      setDoc(doc(db, "holidays", holiday.id), {
+        ...holiday,
+        date: Timestamp.fromDate(holiday.date),
+      }).catch(err => console.error("Error syncing holidays:", err));
+    });
   };
 
   const updateAssignment = (scheduleId: string, day: number, doctorId: string | null) => {
@@ -148,90 +131,172 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     copy[sIndex] = newSchedule;
     setSchedules(copy);
-    syncToCloud(doctors, copy, holidays);
+    setDoc(doc(db, "schedules", scheduleId), {
+      ...newSchedule,
+      createdAt: Timestamp.fromDate(newSchedule.createdAt),
+    }).catch(err => console.error("Error updating assignment:", err));
   };
 
-  // generateSchedule implementation
-  const generateSchedule = (month: number, year: number, selectedYears?: Set<ResidencyYear>): ShiftSchedule => {
+  // Pure builder — no state reads, takes explicit workingSchedules for correct batching
+  const buildScheduleForYear = (
+    month: number, year: number, ry: ResidencyYear,
+    workingSchedules: ShiftSchedule[]
+  ): ShiftSchedule => {
     const daysInMonth = new Date(year, month, 0).getDate();
-    const eligibleDoctors = selectedYears 
-      ? doctors.filter(d => selectedYears.has(d.residencyYear))
-      : doctors;
-      
+    const eligibleDoctors = doctors.filter(d => d.residencyYear === ry);
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
-    const currentYearSet = Array.from(selectedYears || []).sort().join(',');
+    const ryKey = String(ry);
 
-    // Find who worked the last day of previous month for this specific year group
-    const prevSched = schedules.find(s => 
-      s.month === prevMonth && 
-      s.year === prevYear && 
-      s.selectedYears.sort().join(',') === currentYearSet
+    const prevSched = workingSchedules.find(s =>
+      s.month === prevMonth && s.year === prevYear &&
+      [...s.selectedYears].sort().join(',') === ryKey
     );
-
     const lastDayPrev = new Date(prevYear, prevMonth, 0).getDate();
-    const lastDocIdPrevMonth = prevSched?.assignments.find(a => a.day === lastDayPrev)?.doctorId;
+    let lastAssignedId = prevSched?.assignments.find(a => a.day === lastDayPrev)?.doctorId ?? null;
+
+    // Track cumulative shift count so the least-loaded doctor is always preferred
+    const shiftCount = new Map<string, number>();
+    eligibleDoctors.forEach(d => shiftCount.set(d.id, 0));
 
     const assignments = [];
-    let lastAssignedId = lastDocIdPrevMonth;
-
     for (let day = 1; day <= daysInMonth; day++) {
-      // Find a doctor who didn't work yesterday and is eligible
-      // In a real app, we'd also check offDays and blackouts, but keeping it simple as requested
-      let docIndex = (day + (eligibleDoctors.findIndex(d => d.id === lastAssignedId) + 1)) % (eligibleDoctors.length || 1);
-      let selectedDoc = eligibleDoctors.length > 0 ? eligibleDoctors[docIndex] : null;
+      const dow = new Date(year, month - 1, day).getDay();
+      const isWeekdayHoliday = dow !== 0 && dow !== 6 &&
+        holidays.some(h => {
+          const hd = new Date(h.date);
+          return hd.getFullYear() === year && hd.getMonth() === month - 1 && hd.getDate() === day;
+        });
+      // On weekday public holidays, offDays don't apply (everyone can work the special day)
+      const isAvailable = (d: (typeof eligibleDoctors)[0]) =>
+        (isWeekdayHoliday || !d.offDays.includes(dow)) &&
+        !d.blackoutPeriods.some(b => day >= b.startDay && day <= b.endDay);
 
-      // Ensure no consecutive shift
-      if (selectedDoc && selectedDoc.id === lastAssignedId && eligibleDoctors.length > 1) {
-        docIndex = (docIndex + 1) % eligibleDoctors.length;
-        selectedDoc = eligibleDoctors[docIndex];
+      // Pick from available non-consecutive candidates; fallback allows consecutive
+      const pickBest = (pool: (typeof eligibleDoctors)): (typeof eligibleDoctors)[0] | null => {
+        if (pool.length === 0) return null;
+        const minShifts = Math.min(...pool.map(d => shiftCount.get(d.id) ?? 0));
+        const tied = pool.filter(d => (shiftCount.get(d.id) ?? 0) === minShifts);
+        return tied[Math.floor(Math.random() * tied.length)];
+      };
+
+      let candidates = eligibleDoctors.filter(d => isAvailable(d) && d.id !== lastAssignedId);
+      let selectedDoc = pickBest(candidates);
+
+      // Fallback: allow consecutive if no non-consecutive candidate is available
+      if (!selectedDoc) {
+        selectedDoc = pickBest(eligibleDoctors.filter(d => isAvailable(d)));
       }
 
-      assignments.push({
-        id: uuidv4(),
-        day,
-        doctorId: selectedDoc ? selectedDoc.id : null,
-        isManualOverride: false
-      });
-      
-      lastAssignedId = selectedDoc?.id;
+      assignments.push({ id: uuidv4(), day, doctorId: selectedDoc?.id ?? null, isManualOverride: false });
+      if (selectedDoc) {
+        shiftCount.set(selectedDoc.id, (shiftCount.get(selectedDoc.id) ?? 0) + 1);
+        lastAssignedId = selectedDoc.id;
+      } else {
+        lastAssignedId = null;
+      }
     }
 
-    const schedule: ShiftSchedule = {
-      id: uuidv4(),
-      month,
-      year,
-      assignments,
-      selectedYears: Array.from(selectedYears || Object.values(ResidencyYear) as ResidencyYear[]),
-      createdAt: new Date()
-    };
+    return { id: uuidv4(), month, year, assignments, selectedYears: [ry], createdAt: new Date() };
+  };
+
+  // Batch generate — one setSchedules call for all years (fixes stale-closure bug)
+  const generateSchedulesBatch = async (month: number, year: number, yearSet: Set<ResidencyYear>) => {
+    // Query Firestore directly to catch any stale docs not in the in-memory state
+    try {
+      const q = query(
+        collection(db, "schedules"),
+        where("month", "==", month),
+        where("year", "==", year)
+      );
+      const snap = await getDocs(q);
+      snap.docs.forEach(d => {
+        const ryears: ResidencyYear[] = (d.data().selectedYears as ResidencyYear[]) || [];
+        if (ryears.some(ry => yearSet.has(ry))) {
+          deleteDoc(doc(db, "schedules", d.id)).catch(console.error);
+        }
+      });
+    } catch (err) {
+      console.error("Error purging stale schedules from Firestore:", err);
+    }
+
+    // Remove matching entries from in-memory state as well
+    const toDelete = schedules.filter(s =>
+      s.month === month && s.year === year &&
+      s.selectedYears.some(ry => yearSet.has(ry))
+    );
+
+    let working = schedules.filter(s => !toDelete.includes(s));
+    const newSchedules: ShiftSchedule[] = [];
+
+    Array.from(yearSet).sort().forEach(ry => {
+      const schedule = buildScheduleForYear(month, year, ry, working);
+      working.push(schedule);
+      newSchedules.push(schedule);
+    });
+
+    setSchedules(working);
+    newSchedules.forEach(schedule => {
+      setDoc(doc(db, "schedules", schedule.id), {
+        ...schedule,
+        createdAt: Timestamp.fromDate(schedule.createdAt),
+      }).catch(err => console.error("Error saving schedule:", err));
+    });
+  };
+
+  // generateSchedule implementation (kept for single-year backward compat)
+  const generateSchedule = (month: number, year: number, selectedYears?: Set<ResidencyYear>): ShiftSchedule => {
+    const rySet = selectedYears || new Set(Object.values(ResidencyYear) as ResidencyYear[]);
+    const currentYearSet = Array.from(rySet).sort().join(',');
 
     const filtered = schedules.filter(s => {
       const isSameTime = s.month === month && s.year === year;
       const sYearSet = [...s.selectedYears].sort().join(',');
       return !(isSameTime && sYearSet === currentYearSet);
     });
+
+    const ry = Array.from(rySet)[0];
+    const schedule = buildScheduleForYear(month, year, ry, filtered);
+    schedule.selectedYears = Array.from(rySet);
+
     const nextSchedules = [...filtered, schedule];
     setSchedules(nextSchedules);
-    syncToCloud(doctors, nextSchedules, holidays);
+    setDoc(doc(db, "schedules", schedule.id), {
+      ...schedule,
+      createdAt: Timestamp.fromDate(schedule.createdAt),
+    }).catch(err => console.error("Error generating schedule:", err));
 
     return schedule;
   };
 
   const deleteSchedule = (month: number, year: number) => {
+    const toDelete = schedules.find(s => s.month === month && s.year === year);
     const next = schedules.filter(s => s.month !== month || s.year !== year);
     setSchedules(next);
-    syncToCloud(doctors, next, holidays);
+    if (toDelete) {
+      deleteDoc(doc(db, "schedules", toDelete.id)).catch(err =>
+        console.error("Error deleting schedule:", err)
+      );
+    }
   };
 
   const deleteScheduleByYear = (month: number, year: number, residencyYear: ResidencyYear) => {
+    const toDelete = schedules.find(s => {
+      const isSameTime = s.month === month && s.year === year;
+      const containsYear = s.selectedYears.includes(residencyYear);
+      return isSameTime && containsYear;
+    });
     const next = schedules.filter(s => {
       const isSameTime = s.month === month && s.year === year;
       const containsYear = s.selectedYears.includes(residencyYear);
       return !(isSameTime && containsYear);
     });
     setSchedules(next);
-    syncToCloud(doctors, next, holidays);
+    if (toDelete) {
+      deleteDoc(doc(db, "schedules", toDelete.id)).catch(err =>
+        console.error("Error deleting schedule by year:", err)
+      );
+    }
   };
 
   const engMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -296,7 +361,7 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       doctors, schedules, holidays,
       addDoctor, updateDoctor, deleteDoctor,
       addHoliday, deleteHoliday, setHolidays: setHolidaysWithSync,
-      generateSchedule, deleteSchedule, deleteScheduleByYear, updateAssignment,
+      generateSchedule, generateSchedulesBatch, deleteSchedule, deleteScheduleByYear, updateAssignment,
       generateLineMessage, generateCombinedCSV
     }}>
       {children}

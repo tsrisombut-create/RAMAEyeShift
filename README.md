@@ -1,6 +1,6 @@
 # RAMAEyeShift
 
-A premium, web-based Ophthalmology Resident Scheduling and OR Management System. Originally conceived as a SwiftUI application, this platform has been transformed into a high-performance web experience designed for clinical staff at Ramathibodi Hospital.
+A web-based Ophthalmology Resident Scheduling. Originally conceived as a SwiftUI application, this platform has been transformed into a high-performance web experience designed for clinical staff at Ramathibodi Hospital.
 
 ## Features
 
@@ -9,7 +9,7 @@ A premium, web-based Ophthalmology Resident Scheduling and OR Management System.
 - **Holiday Integration**: Intelligent handling of public holidays and custom staff leave.
 - **Data Sync**: Real-time integration with Google Sheets for robust backend persistence.
 - **Smart Exports**: Generate schedule strings for LINE or export comprehensive data via CSV.
-- **Premium UI**: Modern glassmorphic design system using *Plus Jakarta Sans* typography.
+- **UI**: Modern glassmorphic design system using *Plus Jakarta Sans* typography.
 
 ## Tech Stack
 

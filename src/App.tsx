@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
-import { BarChart3, LayoutGrid, CalendarDays, Users, CalendarOff, Sun, Moon } from 'lucide-react';
+import { LayoutGrid, CalendarDays, Users, CalendarOff, Sun, Moon, HelpCircle } from 'lucide-react';
 import './App.css';
 
 import Dashboard from './views/Dashboard';
 import ShiftSchedule from './views/ShiftSchedule';
 import DoctorManagement from './views/DoctorManagement';
 import PublicHoliday from './views/PublicHoliday';
-import WorkloadStats from './views/WorkloadStats';
+import Support from './views/Support';
 
 const AppLayout = () => {
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
 
   useEffect(() => {
     document.body.className = theme === 'dark' ? 'dark-theme' : 'light-theme';
@@ -20,9 +20,9 @@ const AppLayout = () => {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
     { path: '/schedule', label: 'Shift Table', icon: CalendarDays },
-    { path: '/analytics', label: 'Analytics', icon: BarChart3 },
     { path: '/doctors', label: 'Doctors', icon: Users },
-    { path: '/holidays', label: 'Public Holidays', icon: CalendarOff },
+    { path: '/holidays', label: 'Holidays', icon: CalendarOff },
+    { path: '/support', label: 'Support', icon: HelpCircle },
   ];
 
   return (
@@ -30,7 +30,7 @@ const AppLayout = () => {
       {/* Mobile-only top header */}
       <header className="mobile-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src="RamaLogo.png" alt="Rama Logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
+          <img src="/RamaLogo.png" alt="Rama Logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
           <span className="sidebar-title" style={{ fontSize: '0.9rem' }}>EyeRAMAShift</span>
         </div>
         <button
@@ -45,7 +45,7 @@ const AppLayout = () => {
       {/* Desktop Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <img src="RamaLogo.png" alt="Rama Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+          <img src="/RamaLogo.png" alt="Rama Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
           <span className="sidebar-title">EyeRAMAShift</span>
         </div>
 
@@ -83,9 +83,9 @@ const AppLayout = () => {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/schedule" element={<ShiftSchedule />} />
-          <Route path="/analytics" element={<WorkloadStats />} />
           <Route path="/doctors" element={<DoctorManagement />} />
           <Route path="/holidays" element={<PublicHoliday />} />
+          <Route path="/support" element={<Support />} />
         </Routes>
       </main>
 

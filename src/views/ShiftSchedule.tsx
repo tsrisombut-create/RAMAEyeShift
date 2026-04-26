@@ -6,7 +6,7 @@ import type { Doctor, ShiftSchedule } from '../models';
 import { BarChart3, Shuffle, Trash2, CalendarX, X, MessageSquare, Download, CheckCircle2, UserX, Check, AlertCircle, Copy } from 'lucide-react';
 
 export default function ShiftScheduleView() {
-  const { schedules, generateSchedule, deleteSchedule, deleteScheduleByYear, updateAssignment, doctors, generateLineMessage, generateCombinedCSV, holidays } = useDataStore();
+  const { schedules, generateSchedulesBatch, deleteSchedule, deleteScheduleByYear, updateAssignment, doctors, generateLineMessage, generateCombinedCSV, holidays } = useDataStore();
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -31,8 +31,13 @@ export default function ShiftScheduleView() {
 
   const engMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   
+  // True only when the selected years already have schedules for this month/year
+  const hasConflict = Array.from(selectedYears).some(ry =>
+    currentSchedules.some(s => s.selectedYears.includes(ry))
+  );
+
   const handleGenerateClick = () => {
-    if (hasAnySchedule) {
+    if (hasConflict) {
       setShowGenerateConfirm(true);
     } else {
       executeGenerate();
@@ -43,11 +48,8 @@ export default function ShiftScheduleView() {
     setIsGenerating(true);
     setShowGenerateConfirm(false);
     setTimeout(() => {
-      // Loop through each selected year to create separate schedules (rows)
-      Array.from(selectedYears)
-        .sort()
-        .forEach(ry => generateSchedule(selectedMonth, selectedYear, new Set([ry])));
-      setIsGenerating(false);
+      generateSchedulesBatch(selectedMonth, selectedYear, selectedYears)
+        .finally(() => setIsGenerating(false));
     }, 400);
   };
 
@@ -82,69 +84,79 @@ export default function ShiftScheduleView() {
 
   const shiftCountFor = (docId: string, sched: ShiftSchedule) => sched.assignments.filter(a => a.doctorId === docId).length;
 
-  const renderStats = (sched: ShiftSchedule) => {
-    const activeDocIds = new Set(sched.assignments.map(a => a.doctorId).filter(Boolean));
-    const activeDocs = doctors.filter(d => activeDocIds.has(d.id));
+  const renderStats = (monthSchedules: ShiftSchedule[]) => {
+    // Deduplicate: one schedule per residency year (latest wins if duplicates exist in Firestore)
+    const schedByYear = new Map<ResidencyYear, ShiftSchedule>();
+    [...monthSchedules].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).forEach(s => {
+      s.selectedYears.forEach(ry => { if (!schedByYear.has(ry)) schedByYear.set(ry, s); });
+    });
+
+    const uniqueYears = Array.from(schedByYear.keys()).sort();
 
     return (
-      <div key={sched.id} style={{ marginBottom: '16px' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
-           <span style={{ fontSize: '15px', fontWeight: '600' }}>Schedule Stats</span>
-           {sched.selectedYears.map(ry => (
-             <div key={ry} style={{ display: 'flex', alignItems: 'center', background: residencyYearBadgeColor(ry), borderRadius: '5px', overflow: 'hidden' }}>
-               <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'white', padding: '2px 7px' }}>
-                 {residencyYearShortName(ry)}
-               </span>
-               <button 
-                 onClick={() => setDeleteTarget(ry)}
-                 style={{ background: 'rgba(0,0,0,0.1)', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.2)', padding: '2px 5px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-               >
-                 <Trash2 size={10} color="white" />
-               </button>
-             </div>
-           ))}
-        </div>
-        <div style={{ display: 'flex', overflowX: 'auto', gap: '12px', paddingBottom: '8px' }}>
-          {activeDocs.length === 0 ? <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No data</div> : activeDocs.map(doc => {
-            const total = shiftCountFor(doc.id, sched);
-            let weekend = 0, friday = 0, weekday = 0;
-            sched.assignments.filter(a => a.doctorId === doc.id).forEach(a => {
-               const dow = new Date(sched.year, sched.month - 1, a.day).getDay();
-               if (dow === 0 || dow === 6) weekend++;
-               else if (dow === 5) friday++;
-               else weekday++;
-            });
-            return (
-              <div key={doc.id} style={{ background: 'var(--bg-card)', padding: '14px', borderRadius: '14px', minWidth: '220px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                   <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: residencyYearBadgeColor(doc.residencyYear), color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '12px' }}>
-                         {getDoctorInitial(doc.name)}
-                   </div>
-                   <div style={{ fontSize: '13px', fontWeight: '600' }}>{doc.name}</div>
-                </div>
-                <div style={{ display: 'flex', gap: '12px', textAlign: 'center' }}>
-                   <div>
-                     <div style={{ fontSize: '22px', fontWeight: 'bold', color: residencyYearBadgeColor(doc.residencyYear) }}>{total}</div>
-                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Total</div>
-                   </div>
-                   <div style={{ width: '1px', background: 'var(--border)' }}></div>
-                   <div>
-                     <div style={{ fontSize: '16px', fontWeight: '600' }}>{weekday}</div>
-                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Wkday</div>
-                   </div>
-                   <div>
-                     <div style={{ fontSize: '16px', fontWeight: '600', color: '#E67E22' }}>{friday}</div>
-                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Friday</div>
-                   </div>
-                   <div>
-                     <div style={{ fontSize: '16px', fontWeight: '600', color: '#E74C3C' }}>{weekend}</div>
-                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Hol.</div>
-                   </div>
-                </div>
+      <div style={{ marginBottom: '16px' }}>
+        {uniqueYears.map(ry => {
+          const sched = schedByYear.get(ry)!;
+          const activeDocIds = new Set(sched.assignments.map(a => a.doctorId).filter(Boolean));
+          const ryDocs = doctors.filter(d => activeDocIds.has(d.id) && d.residencyYear === ry);
+          const color = residencyYearBadgeColor(ry);
+
+          return (
+            <div key={ry} style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '13px', fontWeight: '700', color, background: `${color}18`, padding: '3px 10px', borderRadius: '6px' }}>
+                  {residencyYearShortName(ry)}
+                </span>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)' }}>Stats</span>
               </div>
-            )
-          })}
-        </div>
+              <div style={{ display: 'flex', overflowX: 'auto', gap: '10px', paddingBottom: '8px' }}>
+                {ryDocs.length === 0 ? (
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No data</div>
+                ) : ryDocs.map(doc => {
+                  const total = shiftCountFor(doc.id, sched);
+                  let weekend = 0, friday = 0, weekday = 0;
+                  sched.assignments.filter(a => a.doctorId === doc.id).forEach(a => {
+                    const dow = new Date(sched.year, sched.month - 1, a.day).getDay();
+                    if (dow === 0 || dow === 6) weekend++;
+                    else if (dow === 5) friday++;
+                    else weekday++;
+                  });
+                  return (
+                    <div key={doc.id} style={{ background: 'var(--bg-card)', padding: '12px', borderRadius: '12px', minWidth: '190px', border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+                        <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: color, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '12px', flexShrink: 0 }}>
+                          {getDoctorInitial(doc.name)}
+                        </div>
+                        <div style={{ fontSize: '12px', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {doc.name.replace(/^(นพ\.|พญ\.)/, '')}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px', textAlign: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '20px', fontWeight: 'bold', color }}>{total}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Total</div>
+                        </div>
+                        <div style={{ width: '1px', background: 'var(--border)' }} />
+                        <div>
+                          <div style={{ fontSize: '15px', fontWeight: '600' }}>{weekday}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Wkday</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#E67E22' }}>{friday}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Fri</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#E74C3C' }}>{weekend}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Hol.</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -172,13 +184,19 @@ export default function ShiftScheduleView() {
             <div style={{ fontSize: '18px', fontWeight: 'bold', letterSpacing: '-0.02em' }}>{engMonths[selectedMonth - 1]} {selectedYear}</div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{monthSchedules.length} Year Groups</div>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+             <button
+               onClick={(e) => { e.stopPropagation(); setDeleteTarget('all'); }}
+               style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(231,76,60,0.08)', color: '#E74C3C', border: '1px solid rgba(231,76,60,0.25)', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' }}
+             >
+               <Trash2 size={10} /> All
+             </button>
              {yearGroups.map(g => (
                <div key={g.year} style={{ display: 'flex', alignItems: 'center', background: residencyYearBadgeColor(g.year), borderRadius: '6px', overflow: 'hidden' }}>
                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'white', padding: '3px 8px' }}>
                    {residencyYearShortName(g.year)}
                  </span>
-                 <button 
+                 <button
                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(g.year); }}
                    style={{ background: 'rgba(0,0,0,0.1)', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.2)', padding: '3px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                  >
@@ -189,7 +207,7 @@ export default function ShiftScheduleView() {
           </div>
         </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: `${50 + 80 + yearGroups.length * 160}px` }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)' }}>
               <th style={{ width: '50px', padding: '12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>Date</th>
@@ -212,46 +230,46 @@ export default function ShiftScheduleView() {
               });
               const isHoliday = !!holiday;
               const isSpecialDay = isWeekend || isHoliday;
-              
+
               return (
                 <tr key={dayNum} style={{ borderBottom: '1px solid var(--border)', background: isSpecialDay ? 'rgba(231, 76, 60, 0.04)' : 'transparent' }}>
                   <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                     <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: isSpecialDay ? '#FFD6D6' : 'rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', fontSize: '13px', fontWeight: '800', color: isSpecialDay ? '#E74C3C' : 'var(--text-main)' }}>
-                       {dayNum}
-                     </div>
+                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: isSpecialDay ? '#FFD6D6' : 'rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', fontSize: '13px', fontWeight: '800', color: isSpecialDay ? '#E74C3C' : 'var(--text-main)' }}>
+                      {dayNum}
+                    </div>
                   </td>
                   <td style={{ padding: '10px 12px' }}>
-                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                       <span style={{ fontSize: '13px', fontWeight: isSpecialDay ? '800' : '600', color: isSpecialDay ? '#E74C3C' : 'var(--text-main)' }}>
-                         {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]}
-                       </span>
-                       {isHoliday && <span style={{ fontSize: '9px', color: '#E74C3C', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{holiday.name}</span>}
-                     </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '13px', fontWeight: isSpecialDay ? '800' : '600', color: isSpecialDay ? '#E74C3C' : 'var(--text-main)' }}>
+                        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]}
+                      </span>
+                      {isHoliday && <span style={{ fontSize: '9px', color: '#E74C3C', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{holiday.name}</span>}
+                    </div>
                   </td>
                   {yearGroups.map(g => {
                     const sched = monthSchedules.find(s => s.id === g.scheduleId);
                     const assign = sched?.assignments.find(a => a.day === dayNum);
                     const doc = doctors.find(d => d.id === (assign?.doctorId || ''));
-                    
+
                     return (
-                      <td 
-                        key={g.year} 
+                      <td
+                        key={g.year}
                         onClick={() => sched && setEditTarget({ schedule: sched, day: dayNum })}
                         style={{ padding: '10px 12px', cursor: 'pointer' }}
                       >
-                         {doc ? (
-                           <div className="hover-lift" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: `${residencyYearBadgeColor(doc.residencyYear)}12`, padding: '6px 10px', borderRadius: '8px', transition: 'all 0.2s' }}>
-                             <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: residencyYearBadgeColor(doc.residencyYear), color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 'bold' }}>
-                               {getDoctorInitial(doc.name)}
-                             </div>
-                             <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                               {doc.name.replace(/^(นพ\.|พญ\.)/, '')}
-                             </span>
-                             {assign?.isManualOverride && <AlertCircle size={10} color={residencyYearBadgeColor(doc.residencyYear)} style={{ opacity: 0.6 }} />}
-                           </div>
-                         ) : (
-                           <div style={{ fontSize: '11px', color: 'rgba(231, 76, 60, 0.4)', fontWeight: 'bold', fontStyle: 'italic', paddingLeft: '8px' }}>— empty —</div>
-                         )}
+                        {doc ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: `${residencyYearBadgeColor(doc.residencyYear)}12`, padding: '6px 10px', borderRadius: '8px' }}>
+                            <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: residencyYearBadgeColor(doc.residencyYear), color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 'bold', flexShrink: 0 }}>
+                              {getDoctorInitial(doc.name)}
+                            </div>
+                            <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {doc.name.replace(/^(นพ\.|พญ\.)/, '')}
+                            </span>
+                            {assign?.isManualOverride && <AlertCircle size={10} color={residencyYearBadgeColor(doc.residencyYear)} style={{ opacity: 0.6 }} />}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '11px', color: 'rgba(231, 76, 60, 0.35)', fontWeight: 'bold', fontStyle: 'italic', paddingLeft: '8px' }}>— empty —</div>
+                        )}
                       </td>
                     );
                   })}
@@ -272,8 +290,14 @@ export default function ShiftScheduleView() {
     const currentAssignment = schedule.assignments.find(a => a.day === day);
     const currentDoc = doctors.find(d => d.id === currentAssignment?.doctorId);
 
+    const isWeekdayHoliday = dow !== 0 && dow !== 6 &&
+      holidays.some(h => {
+        const hd = new Date(h.date);
+        return hd.getFullYear() === schedule.year && hd.getMonth() === schedule.month - 1 && hd.getDate() === day;
+      });
+
     function blockReason(doc: Doctor): string | null {
-       if (doc.offDays.includes(dow)) return "Regular day off";
+       if (!isWeekdayHoliday && doc.offDays.includes(dow)) return "Regular day off";
        if (doc.blackoutPeriods.some(b => day >= b.startDay && day <= b.endDay)) return "Blackout period";
        const prev = schedule.assignments.find(a => a.day === day - 1);
        const next = schedule.assignments.find(a => a.day === day + 1);
@@ -352,14 +376,24 @@ export default function ShiftScheduleView() {
                  const isCurrent = currentDoc?.id === doc.id;
                  const isPending = pendingForceId === doc.id;
 
+                 const docAssignments = schedule.assignments.filter(a => a.doctorId === doc.id);
+                 const total = docAssignments.length;
+                 let wkday = 0, fri = 0, hol = 0;
+                 docAssignments.forEach(a => {
+                   const d = new Date(schedule.year, schedule.month - 1, a.day).getDay();
+                   if (d === 0 || d === 6) hol++;
+                   else if (d === 5) fri++;
+                   else wkday++;
+                 });
+
                  const handleDocClick = () => {
                    if (!isBlocked) {
-                     updateAssignment(schedule.id, day, doc.id); 
+                     updateAssignment(schedule.id, day, doc.id);
                      setEditTarget(null);
                      setPendingForceId(null);
                      return;
                    }
-                   
+
                    if (isPending) {
                      // Second click on blocked: show custom modal
                      setForceConfirmTarget({ doc, reason: reason || "Unknown Reason" });
@@ -370,38 +404,50 @@ export default function ShiftScheduleView() {
                  };
 
                  return (
-                   <div key={doc.id} 
+                   <div key={doc.id}
                      onClick={handleDocClick}
-                     style={{ 
-                       display: 'flex', padding: '12px 16px', alignItems: 'center', borderBottom: '1px solid var(--border)', 
-                       cursor: 'pointer', 
-                       background: isCurrent ? 'rgba(46, 91, 255, 0.05)' : (isPending ? 'rgba(231, 76, 60, 0.05)' : 'transparent'), 
-                       opacity: isBlocked && !isPending ? 0.5 : 1, 
+                     style={{
+                       display: 'flex', padding: '12px 16px', alignItems: 'center', borderBottom: '1px solid var(--border)',
+                       cursor: 'pointer',
+                       background: isCurrent ? 'rgba(46, 91, 255, 0.05)' : (isPending ? 'rgba(231, 76, 60, 0.05)' : 'transparent'),
+                       opacity: isBlocked && !isPending ? 0.5 : 1,
                        userSelect: 'none',
                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                        transform: isPending ? 'translateX(4px)' : 'none',
                        borderLeft: isPending ? '4px solid #E74C3C' : '0px solid transparent'
                      }}
                    >
-                     <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: isBlocked ? (isPending ? '#E74C3C' : 'rgba(0,0,0,0.1)') : 'rgba(39, 174, 96, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', transition: 'all 0.2s' }}>
+                     <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: isBlocked ? (isPending ? '#E74C3C' : 'rgba(0,0,0,0.1)') : 'rgba(39, 174, 96, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', transition: 'all 0.2s', flexShrink: 0 }}>
                         {isBlocked ? (isPending ? <AlertCircle size={15} color="#fff" /> : <X size={15} color="var(--text-muted)" />) : <Check size={15} color="#27AE60" strokeWidth={3} />}
                      </div>
-                     <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: residencyYearBadgeColor(doc.residencyYear), color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 'bold', marginRight: '12px', boxShadow: isPending ? `0 4px 12px ${residencyYearBadgeColor(doc.residencyYear)}4D` : 'none' }}>
+                     <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: residencyYearBadgeColor(doc.residencyYear), color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 'bold', marginRight: '12px', boxShadow: isPending ? `0 4px 12px ${residencyYearBadgeColor(doc.residencyYear)}4D` : 'none', flexShrink: 0 }}>
                         {getDoctorInitial(doc.name)}
                      </div>
-                     <div style={{ flex: 1 }}>
-                       <div style={{ fontSize: '14px', fontWeight: 'bold', color: isPending ? '#E74C3C' : (isCurrent ? 'var(--primary)' : 'var(--text-main)') }}>{doc.name}</div>
+                     <div style={{ flex: 1, minWidth: 0 }}>
+                       <div style={{ fontSize: '14px', fontWeight: 'bold', color: isPending ? '#E74C3C' : (isCurrent ? 'var(--primary)' : 'var(--text-main)'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.name}</div>
                        {isBlocked && (
                          <div style={{ fontSize: '11px', color: '#E74C3C', fontWeight: isPending ? '700' : '400' }}>
                            {isPending ? "Tap again to Force Override" : reason}
                          </div>
                        )}
+                       <div style={{ display: 'flex', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
+                         {[
+                           { label: 'Total', value: total, bg: 'rgba(46,91,255,0.08)', color: 'var(--primary)' },
+                           { label: 'Wkday', value: wkday, bg: 'rgba(0,0,0,0.05)', color: 'var(--text-muted)' },
+                           { label: 'Fri', value: fri, bg: 'rgba(230,126,34,0.1)', color: '#E67E22' },
+                           { label: 'Wknd/Hol', value: hol, bg: 'rgba(231,76,60,0.08)', color: '#E74C3C' },
+                         ].map(({ label, value, bg, color }) => (
+                           <span key={label} style={{ fontSize: '10px', background: bg, color, borderRadius: '4px', padding: '1px 5px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                             {value} {label}
+                           </span>
+                         ))}
+                       </div>
                      </div>
-                     {isCurrent && <CheckCircle2 color="#2E5BFF" size={20} />}
+                     {isCurrent && <CheckCircle2 color="#2E5BFF" size={20} style={{ flexShrink: 0 }} />}
                      {isPending && (
-                       <div 
+                       <div
                          onClick={(e) => { e.stopPropagation(); setPendingForceId(null); }}
-                         style={{ padding: '8px', cursor: 'pointer', display: 'flex', color: '#E74C3C' }}
+                         style={{ padding: '8px', cursor: 'pointer', display: 'flex', color: '#E74C3C', flexShrink: 0 }}
                        >
                          <X size={18} strokeWidth={3} />
                        </div>
@@ -675,10 +721,10 @@ export default function ShiftScheduleView() {
         </select>
       </div>
 
-      {/* Residency Filter */}
+      {/* Residency Filter + New Set */}
       <div style={{ marginBottom: '16px' }}>
         <p style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '8px' }}>Select Residency Years</p>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {[ResidencyYear.year1, ResidencyYear.year2, ResidencyYear.year3].map(ry => {
             const isSel = selectedYears.has(ry);
             const count = doctors.filter(d => d.residencyYear === ry).length;
@@ -690,32 +736,27 @@ export default function ShiftScheduleView() {
               </button>
             )
           })}
+          <div style={{ flex: 1 }} />
+          <button onClick={handleGenerateClick} disabled={isGenerating || selectedYears.size === 0} style={{ background: '#2E5BFF', color: 'white', border: 'none', borderRadius: '10px', padding: '10px 16px', fontWeight: 'bold', fontSize: '14px', cursor: isGenerating || selectedYears.size === 0 ? 'default' : 'pointer', opacity: isGenerating || selectedYears.size === 0 ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <Shuffle size={16} />
+            {isGenerating ? 'Generating...' : 'New Set'}
+          </button>
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', flexWrap: 'wrap' }}>
-        <button onClick={handleGenerateClick} disabled={isGenerating || selectedYears.size === 0} style={{ background: '#2E5BFF', color: 'white', border: 'none', borderRadius: '10px', padding: '10px 16px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', opacity: isGenerating ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Shuffle size={16} />
-          {isGenerating ? 'Generating...' : 'New Set'}
-        </button>
+      {/* Line String + Export CSV */}
+      {hasAnySchedule && (
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
+          <button onClick={() => setShowLineModal(true)} style={{ flex: 1, background: 'transparent', color: 'var(--text-main)', border: '1.5px solid var(--border)', borderRadius: '10px', padding: '10px 16px', fontWeight: '500', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <MessageSquare size={16} color="#25D366" /> Line String
+          </button>
+          <button onClick={handleExportCSV} style={{ flex: 1, background: 'transparent', color: 'var(--text-main)', border: '1.5px solid var(--border)', borderRadius: '10px', padding: '10px 16px', fontWeight: '500', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <Download size={16} color="#3498DB" /> Export CSV
+          </button>
+        </div>
+      )}
 
-        {hasAnySchedule && (
-          <>
-            <button onClick={() => setShowLineModal(true)} style={{ background: 'transparent', color: 'var(--text-main)', border: '1.5px solid rgba(0,0,0,0.1)', borderRadius: '10px', padding: '10px 16px', fontWeight: '500', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <MessageSquare size={16} color="#25D366" /> Line String
-            </button>
-            <button onClick={handleExportCSV} style={{ background: 'transparent', color: 'var(--text-main)', border: '1.5px solid rgba(0,0,0,0.1)', borderRadius: '10px', padding: '10px 16px', fontWeight: '500', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Download size={16} color="#3498DB" /> Export CSV
-            </button>
-            <button onClick={() => setDeleteTarget('all')} style={{ background: '#E74C3C14', color: '#E74C3C', border: '1.5px solid #E74C3C4D', borderRadius: '10px', padding: '10px 16px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Trash2 size={16} /> Delete All
-            </button>
-          </>
-        )}
-      </div>
-
-      {showStats && hasAnySchedule && currentSchedules.map(renderStats)}
+      {showStats && hasAnySchedule && renderStats(currentSchedules)}
 
       {/* Unified Table */}
       {!hasAnySchedule ? (

@@ -1,0 +1,119 @@
+.blackout-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.calendar-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  flex: 1;
+  text-align: center;
+  color: var(--text-main);
+}
+
+.nav-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  color: var(--text-muted);
+}
+
+.nav-btn:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.day-header {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.day-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.05));
+  border: 2px solid var(--border);
+  color: var(--text-main);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.day-cell:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(46, 91, 255, 0.2);
+  border-color: #2E5BFF;
+}
+
+.day-cell.empty {
+  background: transparent;
+  border: 2px solid transparent;
+  cursor: default;
+}
+
+.day-cell.off-day {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+.day-cell.selected {
+  background: #ff6b6b;
+  color: white;
+  border-color: #ff5252;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+  transition: none;
+}
+
+.day-cell.off-day.selected {
+  background: #ff6b6b;
+  color: white;
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+  transition: none;
+}
+
+.day-cell:not(.empty):not(.off-day):hover {
+  border-color: #2E5BFF;
+  background: rgba(46, 91, 255, 0.1);
+}
+
+.day-cell:not(.empty):not(.off-day):active {
+  background: rgba(46, 91, 255, 0.2);
+}
+
+.day-cell:not(.empty).off-day:hover {
+  background: rgba(0, 0, 0, 0.1);
+}

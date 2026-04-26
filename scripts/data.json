@@ -1,0 +1,39 @@
+{
+  "doctors": [
+    {"id":"9e982dc8-5662-4b34-ae00-42b771cd4889","name":"นพ.ปารัณ","residencyYear":1,"offDays":[1,2,3],"blackoutPeriods":[]},
+    {"id":"32cb27e7-a65d-4a96-893c-d63a573b6b96","name":"พญ.สริตา","residencyYear":1,"offDays":[2,3,4],"blackoutPeriods":[]},
+    {"id":"e19035e6-1891-4d2b-ab57-b14cfa3f3a88","name":"นพ.พัชระ","residencyYear":3,"offDays":[3,4,5],"blackoutPeriods":[]},
+    {"id":"d803587e-32d8-43b0-8981-2e39cf0476e0","name":"พญ.พัชราภรณ์","residencyYear":1,"offDays":[1,2,3],"blackoutPeriods":[]},
+    {"id":"d1a81587-f65f-4fac-970a-f7cca91af7c1","name":"นพ.ณพงค์","residencyYear":1,"offDays":[2,3,4],"blackoutPeriods":[]},
+    {"id":"14ff22fa-6573-4d3c-bd5a-3c803daf3dc7","name":"พญ.ชรินทร์ทิพย์","residencyYear":1,"offDays":[4,5,6],"blackoutPeriods":[]},
+    {"id":"48a48a6c-e0a8-4bd2-97c0-51b0ded9c0ca","name":"พญ.ภาคินี","residencyYear":3,"offDays":[4,5,6],"blackoutPeriods":[]},
+    {"id":"7e5bbc4b-f462-44d9-ad4b-6c0e2ef1c64a","name":"พญ.บูรณี","residencyYear":1,"offDays":[4,5,6],"blackoutPeriods":[]},
+    {"id":"f19fd8d9-9978-4f5c-97ca-9528135778b2","name":"พญ.ณัฎฐาพร","residencyYear":1,"offDays":[2,3,4],"blackoutPeriods":[]},
+    {"id":"37c93179-ca3a-4268-89ea-f6f724d9a248","name":"นพ.ฐานสิทธิ์","residencyYear":3,"offDays":[1,2,3],"blackoutPeriods":[]},
+    {"id":"45cd6f57-8ac4-4a7f-bfd6-4258f94b1085","name":"พญ.จินต์จุฑา","residencyYear":1,"offDays":[3,4,5],"blackoutPeriods":[]},
+    {"id":"e24b50ac-e7fe-4dde-b4ae-5a90f8392418","name":"นพ.ปฎิพล","residencyYear":3,"offDays":[1,2,3],"blackoutPeriods":[]},
+    {"id":"72578a07-e81f-4c98-9713-f35908168a91","name":"พญ.กติกา","residencyYear":3,"offDays":[2,3,4],"blackoutPeriods":[]}
+  ],
+  "schedules": [
+    {"id":"2bd9ddba-0c8f-41e9-816c-387f828058e6","month":4,"year":2026,"assignments":[{"id":"3706fc5a-d507-4846-accd-af0bd2a9ecda","day":1,"doctorId":"14ff22fa-6573-4d3c-bd5a-3c803daf3dc7","isManualOverride":true},{"id":"b61488e0-d52c-47a8-a4b1-27bd29eb5be4","day":2,"doctorId":"d803587e-32d8-43b0-8981-2e39cf0476e0","isManualOverride":true},{"id":"a18b64d7-be88-4733-91a7-732f48600e25","day":3,"doctorId":"9e982dc8-5662-4b34-ae00-42b771cd4889","isManualOverride":true},{"id":"ae692406-5133-464f-a47b-dce579bb23fc","day":4,"doctorId":"7e5bbc4b-f462-44d9-ad4b-6c0e2ef1c64a","isManualOverride":false},{"id":"56bb75f9-1839-4153-be3f-aaea028926c3","day":5,"doctorId":"d1a81587-f65f-4fac-970a-f7cca91af7c1","isManualOverride":false},{"id":"e28f4cda-e25d-4306-ab09-33f7b80042c4","day":6,"doctorId":"d803587e-32d8-43b0-8981-2e39cf0476e0","isManualOverride":false},{"id":"2205c527-750b-47b1-8f03-32f52f792979","day":7,"doctorId":"d1a81587-f65f-4fac-970a-f7cca91af7c1","isManualOverride":false},{"id":"c37e3a21-26e6-49e8-b48b-3d788c649f0e","day":8,"doctorId":"14ff22fa-6573-4d3c-bd5a-3c803daf3dc7","isManualOverride":false},{"id":"92053cbd-4d89-4142-916e-ba66478a2c78","day":9,"doctorId":"f19fd8d9-9978-4f5c-97ca-9528135778b2","isManualOverride":false},{"id":"94e0073e-5417-4d95-9832-9ab41a9e203c","day":10,"doctorId":"32cb27e7-a65d-4a96-893c-d63a573b6b96","isManualOverride":false},{"id":"de956bf9-23bd-491f-9b9d-1caaa0bd32c2","day":11,"doctorId":"7e5bbc4b-f462-44d9-ad4b-6c0e2ef1c64a","isManualOverride":false},{"id":"0f853221-0657-4171-acf6-7bb1b2b81d7d","day":12,"doctorId":"d803587e-32d8-43b0-8981-2e39cf0476e0","isManualOverride":false},{"id":"85383cd2-936e-45c0-8fb6-dc249bdeff21","day":13,"doctorId":"9e982dc8-5662-4b34-ae00-42b771cd4889","isManualOverride":false},{"id":"a5255969-01cb-4239-b22b-2cfd1386ba99","day":14,"doctorId":"45cd6f57-8ac4-4a7f-bfd6-4258f94b1085","isManualOverride":false},{"id":"24c166ea-fa19-428d-b9a1-073b92ac5762","day":15,"doctorId":"9e982dc8-5662-4b34-ae00-42b771cd4889","isManualOverride":false},{"id":"5fe08f0c-b23a-452a-8b19-573996449012","day":16,"doctorId":"32cb27e7-a65d-4a96-893c-d63a573b6b96","isManualOverride":false},{"id":"60becd14-63f2-491c-97f3-33f7599e3c0c","day":17,"doctorId":"d1a81587-f65f-4fac-970a-f7cca91af7c1","isManualOverride":false},{"id":"e0d2188e-12ed-40cb-bcf7-dc792b5f5e42","day":18,"doctorId":"f19fd8d9-9978-4f5c-97ca-9528135778b2","isManualOverride":false},{"id":"766c0e5c-1dd1-435f-86fc-acf2129d12f8","day":19,"doctorId":"d803587e-32d8-43b0-8981-2e39cf0476e0","isManualOverride":false},{"id":"83a9fa82-492c-4651-b8f3-847b02ddec4b","day":20,"doctorId":"45cd6f57-8ac4-4a7f-bfd6-4258f94b1085","isManualOverride":false},{"id":"67890c32-2187-4754-a28a-be8df77166d7","day":21,"doctorId":"7e5bbc4b-f462-44d9-ad4b-6c0e2ef1c64a","isManualOverride":false},{"id":"d3416780-00a3-43d5-9c6b-7e50346c6e1d","day":22,"doctorId":"14ff22fa-6573-4d3c-bd5a-3c803daf3dc7","isManualOverride":false},{"id":"f9c11a88-e336-4143-9ca2-14959f0126fb","day":23,"doctorId":"7e5bbc4b-f462-44d9-ad4b-6c0e2ef1c64a","isManualOverride":false},{"id":"7a0bda36-d5c5-4d0b-9494-e2fdcd47e8c9","day":24,"doctorId":"f19fd8d9-9978-4f5c-97ca-9528135778b2","isManualOverride":false},{"id":"dc0fbfd0-005e-432d-b66c-62fa69b96168","day":25,"doctorId":"9e982dc8-5662-4b34-ae00-42b771cd4889","isManualOverride":false},{"id":"c2a41f15-c564-417a-b6c4-e396d9f31bc2","day":26,"doctorId":"d1a81587-f65f-4fac-970a-f7cca91af7c1","isManualOverride":false},{"id":"1bde7e7d-4ff1-4b15-bab1-3bcee93f1210","day":27,"doctorId":"45cd6f57-8ac4-4a7f-bfd6-4258f94b1085","isManualOverride":false},{"id":"8cca5ed1-8133-4f47-a3fd-0b2a28fbe9b1","day":28,"doctorId":"14ff22fa-6573-4d3c-bd5a-3c803daf3dc7","isManualOverride":false},{"id":"12bbf961-81a8-4525-890f-709e735b52ae","day":29,"doctorId":"d803587e-32d8-43b0-8981-2e39cf0476e0","isManualOverride":false},{"id":"5ddc7776-cf4e-45d0-b2ae-afd31f379188","day":30,"doctorId":"32cb27e7-a65d-4a96-893c-d63a573b6b96","isManualOverride":false}],"selectedYears":[1],"createdAt":"2026-04-24T07:22:58.295Z"}
+  ],
+  "holidays": [
+    {"id":"fa6945a1-0271-4226-bcf9-626757806a22","date":"2026-12-09T17:00:00.000Z","name":"วันรัฐธรรมนูญ"},
+    {"id":"31ce8945-5513-4443-86ba-2f978393954f","date":"2026-12-30T17:00:00.000Z","name":"วันสิ้นปี"},
+    {"id":"82e9e761-5a29-45a9-a603-e3c667d52449","date":"2025-12-31T17:00:00.000Z","name":"วันขึ้นปีใหม่"},
+    {"id":"771eb72a-6284-4068-a654-6427e010a591","date":"2026-02-04T17:00:00.000Z","name":"วันตรุษจีน"},
+    {"id":"df6bff37-5035-431f-a722-87e291291a68","date":"2026-02-11T17:00:00.000Z","name":"วันมาฆบูชา"},
+    {"id":"704122fe-5669-4afb-953f-bd1f70d91a7f","date":"2026-04-05T17:00:00.000Z","name":"วันจักรี"},
+    {"id":"3b608297-a381-43a0-8cb6-cfcba8f995a3","date":"2026-04-12T17:00:00.000Z","name":"วันสงกรานต์"},
+    {"id":"5e846acc-c2ec-428a-8e15-864823e58072","date":"2026-04-13T17:00:00.000Z","name":"วันสงกรานต์"},
+    {"id":"2bd87b42-63ad-43ab-a8c9-a66b95f3948f","date":"2026-04-14T17:00:00.000Z","name":"วันสงกรานต์"},
+    {"id":"0963cbec-06a8-4397-998e-9e0cc2a5de7d","date":"2026-04-30T17:00:00.000Z","name":"วันแรงงาน"},
+    {"id":"e1b633b3-8dd9-450c-b664-ceca5629a36b","date":"2026-05-03T17:00:00.000Z","name":"วันฉัตรมงคล"},
+    {"id":"0bb75aa0-48f6-464a-98f2-9b9b62827953","date":"2026-06-02T17:00:00.000Z","name":"วันเฉลิมพระชนมพรรษา"},
+    {"id":"909bacbf-0aea-49e2-b4c3-f185349a420c","date":"2026-07-27T17:00:00.000Z","name":"วันเฉลิมพระชนมพรรษา ร.10"},
+    {"id":"028fc12d-e5a6-4ba5-b843-60ef0c2e6f70","date":"2026-08-11T17:00:00.000Z","name":"วันแม่แห่งชาติ"},
+    {"id":"6179097e-77df-4157-b5f2-46c7f1d8b2e9","date":"2026-10-12T17:00:00.000Z","name":"วันสวรรคต ร.9"},
+    {"id":"1c185ee9-d588-4de7-bbcf-ab91fb7abdaa","date":"2026-10-22T17:00:00.000Z","name":"วันปิยมหาราช"},
+    {"id":"16942e0b-2e07-45f3-bd55-54deb309ba9f","date":"2026-12-04T17:00:00.000Z","name":"วันพ่อแห่งชาติ"}
+  ]
+}

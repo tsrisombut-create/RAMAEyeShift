@@ -27,12 +27,19 @@ export default function ShiftScheduleView() {
   const [lineFilterYears, setLineFilterYears] = useState<Set<ResidencyYear>>(new Set([ResidencyYear.year1, ResidencyYear.year2, ResidencyYear.year3]));
   const [deleteTarget, setDeleteTarget] = useState<ResidencyYear | 'all' | null>(null);
 
-  // Password gate for protected actions (generate, delete, swap)
+  // Password gate for protected actions (generate, delete, swap).
+  // Once correctly entered, the unlock is remembered for the tab session
+  // (sessionStorage clears when the tab is closed).
+  const SESSION_UNLOCK_KEY = 'eyeshift_admin_unlocked';
   const [pendingAction, setPendingAction] = useState<{ action: () => void; label: string } | null>(null);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
 
   const requirePassword = (label: string, action: () => void) => {
+    if (sessionStorage.getItem(SESSION_UNLOCK_KEY) === '1') {
+      action();
+      return;
+    }
     setPendingAction({ action, label });
     setPasswordInput('');
     setPasswordError(false);
@@ -40,6 +47,7 @@ export default function ShiftScheduleView() {
 
   const submitPassword = () => {
     if (passwordInput === ADMIN_PASSWORD) {
+      sessionStorage.setItem(SESSION_UNLOCK_KEY, '1');
       pendingAction?.action();
       setPendingAction(null);
       setPasswordInput('');

@@ -65,9 +65,17 @@ export default function DoctorManagement() {
       return Array.from(new Set(byYear.values()));
     };
     const currentMonthSchedules = dedupe(schedules.filter(s => s.month === selectedMonth && s.year === selectedYear));
-    const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
-    const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
-    const prevMonthSchedules = dedupe(schedules.filter(s => s.month === prevMonth && s.year === prevYear));
+    // All schedules from months BEFORE the selected month — for auto-accumulation
+    const allPriorSchedules = dedupe(schedules.filter(s =>
+      s.year < selectedYear || (s.year === selectedYear && s.month < selectedMonth)
+    ));
+    // Group prior schedules by their own month/year so block detection works correctly per-month
+    const priorByMonth = new Map<string, typeof schedules>();
+    allPriorSchedules.forEach(s => {
+      const key = `${s.year}-${s.month}`;
+      if (!priorByMonth.has(key)) priorByMonth.set(key, []);
+      priorByMonth.get(key)!.push(s);
+    });
 
     const isHolidayOnly = (d: number, m: number, y: number) =>
       holidays.some(h => { const hd = new Date(h.date); return hd.getDate() === d && hd.getMonth() === m - 1 && hd.getFullYear() === y; });
@@ -86,14 +94,6 @@ export default function DoctorManagement() {
         let shiftsThisMonth = 0;
         currentMonthSchedules.forEach(s => { shiftsThisMonth += s.assignments.filter(a => a.doctorId === doc.id).length; });
 
-        let weekdayShiftsPrev = 0, specialShiftsPrev = 0;
-        prevMonthSchedules.forEach(s => {
-          s.assignments.filter(a => a.doctorId === doc.id).forEach(a => {
-            if (getDayType(a.day, prevMonth, prevYear).isSpecial) specialShiftsPrev++;
-            else weekdayShiftsPrev++;
-          });
-        });
-
         // Compute holiday-related counts for a given month/year and its schedules
         const computeHolidayCounts = (m: number, y: number, scheds: typeof schedules) => {
           const dIM = new Date(y, m, 0).getDate();
@@ -109,7 +109,8 @@ export default function DoctorManagement() {
           });
           if (blkStart !== -1) bks.push({ start: blkStart, end: dIM, length: dIM - blkStart + 1 });
 
-          let wkend = 0, wkdayHol = 0, long3 = 0, longExtra = 0;
+          let wkend = 0, wkdayHol = 0, long3 = 0, longExtra = 0, totalForMonth = 0;
+          scheds.forEach(s => { totalForMonth += s.assignments.filter(a => a.doctorId === doc.id).length; });
           assigned.forEach(day => {
             const type = dTypes[day - 1];
             if (type.isWeekend) wkend++;
@@ -117,26 +118,36 @@ export default function DoctorManagement() {
             const block = bks.find(b => day >= b.start && day <= b.end);
             if (block) { if (block.length === 3) long3++; else if (block.length > 3) longExtra++; }
           });
-          return { wkend, wkdayHol, long3, longExtra };
+          const wkday = Math.max(0, totalForMonth - wkend - wkdayHol);
+          return { wkend, wkdayHol, long3, longExtra, wkday };
         };
 
         const cur = computeHolidayCounts(selectedMonth, selectedYear, currentMonthSchedules);
+        const curWeekday = cur.wkday;
 
-        // The "prev" portion comes from manual baselines (paper records) if set,
-        // otherwise falls back to computed prev-month counts.
-        const computedPrev = computeHolidayCounts(prevMonth, prevYear, prevMonthSchedules);
+        // Accumulate across ALL prior months (each grouped by its own year-month)
+        let accWkend = 0, accWkdayHol = 0, accLong3 = 0, accExtraLong = 0, accWkday = 0;
+        priorByMonth.forEach((monthScheds, key) => {
+          const [y, m] = key.split('-').map(Number);
+          const c = computeHolidayCounts(m, y, monthScheds);
+          accWkend += c.wkend; accWkdayHol += c.wkdayHol;
+          accLong3 += c.long3; accExtraLong += c.longExtra;
+          accWkday += c.wkday;
+        });
+
+        // Prev = baseline (frozen paper records) + accumulated app-data from all prior months
         const b = doc.baselines || {};
-        const prevWeekend = b.weekendPrev ?? computedPrev.wkend;
-        const prevWkdayHol = b.weekdayHolidayPrev ?? computedPrev.wkdayHol;
-        const prevLong3 = b.longHoliday3Prev ?? computedPrev.long3;
-        const prevExtraLong = b.extraLongHolidayPrev ?? computedPrev.longExtra;
-        const prevWeekday = b.weekdayPrev ?? weekdayShiftsPrev;
+        const prevWeekend = (b.weekendPrev ?? 0) + accWkend;
+        const prevWkdayHol = (b.weekdayHolidayPrev ?? 0) + accWkdayHol;
+        const prevLong3 = (b.longHoliday3Prev ?? 0) + accLong3;
+        const prevExtraLong = (b.extraLongHolidayPrev ?? 0) + accExtraLong;
+        const prevWeekday = (b.weekdayPrev ?? 0) + accWkday;
 
         return {
           doctor: doc,
           shiftsThisMonth,
-          weekdayShiftsPrev: prevWeekday, specialShiftsPrev,
-          weekdayShiftsPrevLabel: b.weekdayPrev !== undefined ? `${prevWeekday}` : `${weekdayShiftsPrev}+${specialShiftsPrev}`,
+          weekdayShiftsPrev: prevWeekday, specialShiftsPrev: 0,
+          shiftsWeekday: curWeekday,
           shiftsWeekend: cur.wkend, shiftsWeekendPrev: prevWeekend,
           shiftsWeekdayHoliday: cur.wkdayHol, shiftsWeekdayHolidayPrev: prevWkdayHol,
           shiftsInLongHoliday3: cur.long3, shiftsInLongHoliday3Prev: prevLong3,
@@ -560,7 +571,7 @@ export default function DoctorManagement() {
             <tr style={{ background: 'rgba(0,0,0,0.02)', borderBottom: '1px solid var(--border)' }}>
               <th style={{ textAlign: 'left', padding: '14px 16px', fontSize: '12px', color: 'var(--text-muted)', width: '180px' }}>Doctor</th>
               <th style={{ textAlign: 'center', padding: '14px 10px', fontSize: '12px', color: 'var(--text-muted)' }}>เวรเดือนนี้</th>
-              <th style={{ textAlign: 'center', padding: '14px 10px', fontSize: '12px', color: 'var(--text-muted)' }}>เวรธรรมดา (เดือนก่อน)</th>
+              <th style={{ textAlign: 'center', padding: '14px 10px', fontSize: '12px', color: 'var(--text-muted)' }}>เวรธรรมดา</th>
               <th style={{ textAlign: 'center', padding: '14px 10px', fontSize: '12px', color: 'var(--text-muted)' }}>หยุด (ส-อา)</th>
               <th style={{ textAlign: 'center', padding: '14px 10px', fontSize: '12px', color: 'var(--text-muted)' }}>หยุดธรรมดา</th>
               <th style={{ textAlign: 'center', padding: '14px 10px', fontSize: '12px', color: 'var(--text-muted)' }}>หยุดยาว (=3)</th>
@@ -578,7 +589,7 @@ export default function DoctorManagement() {
                       {residencyYearShortName(ry)} GROUP
                     </td>
                   </tr>
-                  {group.map(({ doctor, shiftsThisMonth, weekdayShiftsPrevLabel, shiftsWeekend, shiftsWeekendPrev, shiftsWeekdayHoliday, shiftsWeekdayHolidayPrev, shiftsInLongHoliday3, shiftsInLongHoliday3Prev, shiftsInExtraLongHoliday, shiftsInExtraLongHolidayPrev }) => (
+                  {group.map(({ doctor, shiftsThisMonth, weekdayShiftsPrev, shiftsWeekday, shiftsWeekend, shiftsWeekendPrev, shiftsWeekdayHoliday, shiftsWeekdayHolidayPrev, shiftsInLongHoliday3, shiftsInLongHoliday3Prev, shiftsInExtraLongHoliday, shiftsInExtraLongHolidayPrev }) => (
                     <tr key={doctor.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }} className="hover-bg">
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -589,7 +600,7 @@ export default function DoctorManagement() {
                         </div>
                       </td>
                       <td style={{ textAlign: 'center' }}><span style={{ fontSize: '15px', fontWeight: '800', color: '#2E5BFF' }}>{shiftsThisMonth}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600' }}>{weekdayShiftsPrevLabel}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600' }}>{weekdayShiftsPrev}+{shiftsWeekday}</span></td>
                       <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600', color: '#E74C3C' }}>{shiftsWeekendPrev}+{shiftsWeekend}</span></td>
                       <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600', color: '#27AE60' }}>{shiftsWeekdayHolidayPrev}+{shiftsWeekdayHoliday}</span></td>
                       <td style={{ textAlign: 'center' }}><div style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: '6px', background: 'rgba(230, 126, 34, 0.1)', color: '#E67E22', fontSize: '13px', fontWeight: 'bold' }}>{shiftsInLongHoliday3Prev}+{shiftsInLongHoliday3}</div></td>
@@ -608,7 +619,7 @@ export default function DoctorManagement() {
         <div>
           <h4 style={{ margin: '0 0 6px 0', fontSize: '13px', color: '#2E5BFF' }}>Analytics Definitions</h4>
           <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.7' }}>
-            <li><strong>เวรธรรมดา (เดือนก่อน):</strong> เฉพาะเวรวันจันทร์-ศุกร์ที่ไม่ใช่วันหยุด (Weekday+Special)</li>
+            <li><strong>เวรธรรมดา:</strong> เวรวันจันทร์-ศุกร์ที่ไม่ใช่วันหยุด (baseline + เดือนปัจจุบัน)</li>
             <li><strong>หยุด (ส-อา):</strong> จำนวนเวรที่อยู่ในวันเสาร์-อาทิตย์</li>
             <li><strong>หยุดธรรมดา:</strong> จำนวนเวรวันจันทร์-ศุกร์ที่เป็นวันหยุด</li>
             <li><strong>หยุดยาว:</strong> ช่วงวันหยุดติดต่อกัน "เท่ากับ 3 วัน"</li>

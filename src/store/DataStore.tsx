@@ -182,38 +182,51 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const lastDayPrev = new Date(prevYear, prevMonth, 0).getDate();
     let lastAssignedId = prevSched?.assignments.find(a => a.day === lastDayPrev)?.doctorId ?? null;
 
-    // Track shifts separately: weekday (Mon-Thu), Friday, and weekend (Sat-Sun)
-    // Initialize counts from previous month to balance across months,
-    // then normalize by subtracting the group minimum so no doctor starts so far
-    // ahead that they are never selected for a shift type this month.
+    // All prior schedules for THIS residency year (used for the history tie-breaker)
+    const priorScheds = workingSchedules.filter(s =>
+      [...s.selectedYears].sort().join(',') === ryKey &&
+      (s.year < year || (s.year === year && s.month < month))
+    );
+
+    // Cumulative historical counts per doctor: baseline (paper) + every prior app schedule.
+    // Used as a TIE-BREAKER only — not as the primary balancing criterion.
+    // Primary balance happens in-month so every doctor gets a fair share each month.
+    const histWeekday = new Map<string, number>();
+    const histFriday = new Map<string, number>();
+    const histWeekend = new Map<string, number>();
+    eligibleDoctors.forEach(d => {
+      const b = d.baselines || {};
+      let wkday = b.weekdayPrev ?? 0;
+      let fri = 0;
+      let wkend = b.weekendPrev ?? 0;
+      priorScheds.forEach(s => {
+        s.assignments.filter(a => a.doctorId === d.id).forEach(a => {
+          const dow = new Date(s.year, s.month - 1, a.day).getDay();
+          if (dow === 0 || dow === 6) wkend++;
+          else if (dow === 5) fri++;
+          else wkday++;
+        });
+      });
+      histWeekday.set(d.id, wkday);
+      histFriday.set(d.id, fri);
+      histWeekend.set(d.id, wkend);
+    });
+
+    // In-month per-type counters — reset to 0 each month so within-month balance is fair.
     const weekdayShifts = new Map<string, number>();
     const fridayShifts = new Map<string, number>();
     const weekendShifts = new Map<string, number>();
     eligibleDoctors.forEach(d => {
-      let prevWeekday = 0, prevFriday = 0, prevWeekend = 0;
-      if (prevSched) {
-        prevSched.assignments.filter(a => a.doctorId === d.id).forEach(a => {
-          const dow = new Date(prevYear, prevMonth - 1, a.day).getDay();
-          if (dow === 0 || dow === 6) prevWeekend++;
-          else if (dow === 5) prevFriday++;
-          else prevWeekday++;
-        });
-      }
-      weekdayShifts.set(d.id, prevWeekday);
-      fridayShifts.set(d.id, prevFriday);
-      weekendShifts.set(d.id, prevWeekend);
+      weekdayShifts.set(d.id, 0);
+      fridayShifts.set(d.id, 0);
+      weekendShifts.set(d.id, 0);
     });
 
-    // Normalize: subtract the group minimum so relative differences carry over
-    // but no doctor starts so high they are excluded from a type all month.
-    const minWkday = Math.min(...eligibleDoctors.map(d => weekdayShifts.get(d.id)!));
-    const minFri   = Math.min(...eligibleDoctors.map(d => fridayShifts.get(d.id)!));
-    const minWkend = Math.min(...eligibleDoctors.map(d => weekendShifts.get(d.id)!));
-    eligibleDoctors.forEach(d => {
-      weekdayShifts.set(d.id, weekdayShifts.get(d.id)! - minWkday);
-      fridayShifts.set(d.id,  fridayShifts.get(d.id)!  - minFri);
-      weekendShifts.set(d.id, weekendShifts.get(d.id)! - minWkend);
-    });
+    // Total shifts this month per doctor — used as a tie-breaker so that
+    // a doctor low on EVERY per-type counter doesn't accumulate shifts across
+    // all categories (e.g. weekday + Friday + weekend in the same month).
+    const totalShifts = new Map<string, number>();
+    eligibleDoctors.forEach(d => totalShifts.set(d.id, 0));
 
     const assignments = [];
     for (let day = 1; day <= daysInMonth; day++) {
@@ -233,30 +246,38 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const pickBest = (pool: (typeof eligibleDoctors)): (typeof eligibleDoctors)[0] | null => {
         if (pool.length === 0) return null;
         let shiftMap: Map<string, number>;
-        if (isWeekend) shiftMap = weekendShifts;
-        else if (isFriday) shiftMap = fridayShifts;
-        else shiftMap = weekdayShifts;
+        let histMap: Map<string, number>;
+        if (isWeekend)      { shiftMap = weekendShifts; histMap = histWeekend; }
+        else if (isFriday)  { shiftMap = fridayShifts;  histMap = histFriday;  }
+        else                { shiftMap = weekdayShifts; histMap = histWeekday; }
+
+        // 1) Fewest of THIS shift type IN THIS MONTH (primary in-month balance)
         const minShifts = Math.min(...pool.map(d => shiftMap.get(d.id) ?? 0));
-        const tied = pool.filter(d => (shiftMap.get(d.id) ?? 0) === minShifts);
+        let tied = pool.filter(d => (shiftMap.get(d.id) ?? 0) === minShifts);
+        if (tied.length === 1) return tied[0];
+
+        // 2) Tie-break: fewest TOTAL shifts this month (cross-type fairness)
+        const minTotal = Math.min(...tied.map(d => totalShifts.get(d.id) ?? 0));
+        tied = tied.filter(d => (totalShifts.get(d.id) ?? 0) === minTotal);
+        if (tied.length === 1) return tied[0];
+
+        // 3) Tie-break: lowest cumulative history for THIS type (long-term fairness)
+        const minHist = Math.min(...tied.map(d => histMap.get(d.id) ?? 0));
+        tied = tied.filter(d => (histMap.get(d.id) ?? 0) === minHist);
+        if (tied.length === 1) return tied[0];
+
+        // 4) Final tie-break: random
         return tied[Math.floor(Math.random() * tied.length)];
       };
 
-      let selectedDoc: (typeof eligibleDoctors)[0] | null;
-
-      if (isWeekend || isFriday) {
-        // For weekends and Fridays, skip consecutive exclusion so the dedicated
-        // shift counter can freely distribute across all eligible doctors.
-        // Otherwise a doctor who just worked the previous day gets excluded,
-        // shrinking the pool and causing the same person to accumulate
-        // the same shift type repeatedly.
+      // Two-pass for ALL day types: prefer non-consecutive, fall back to allowing
+      // consecutive only if there is genuinely no other eligible doctor. This
+      // prevents 3-day runs (e.g. Thu→Fri→Sat for one doctor) while still
+      // letting the per-type counters (weekday/friday/weekend) balance the load.
+      const nonConsec = eligibleDoctors.filter(d => isAvailable(d) && d.id !== lastAssignedId);
+      let selectedDoc = pickBest(nonConsec);
+      if (!selectedDoc) {
         selectedDoc = pickBest(eligibleDoctors.filter(d => isAvailable(d)));
-      } else {
-        // For regular weekdays (Mon-Thu), prefer non-consecutive; fall back if needed.
-        const nonConsec = eligibleDoctors.filter(d => isAvailable(d) && d.id !== lastAssignedId);
-        selectedDoc = pickBest(nonConsec);
-        if (!selectedDoc) {
-          selectedDoc = pickBest(eligibleDoctors.filter(d => isAvailable(d)));
-        }
       }
 
       assignments.push({ id: uuidv4(), day, doctorId: selectedDoc?.id ?? null, isManualOverride: false });
@@ -268,6 +289,7 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         } else {
           weekdayShifts.set(selectedDoc.id, (weekdayShifts.get(selectedDoc.id) ?? 0) + 1);
         }
+        totalShifts.set(selectedDoc.id, (totalShifts.get(selectedDoc.id) ?? 0) + 1);
         lastAssignedId = selectedDoc.id;
       } else {
         lastAssignedId = null;

@@ -62,10 +62,23 @@ interface ShiftAssignment {
 - Ensures balance across consecutive months, not just within a month
 
 **Consecutive Shift Avoidance:**
-- **Regular weekdays (Mon-Thu):** Prefer non-consecutive; fall back to consecutive if needed
-- **Fridays & weekends:** Consecutive exclusion is *skipped* — the fridayShifts/weekendShifts counter handles balancing alone
-  - *Why:* Fridays and weekends usually have fewer eligible doctors. Consecutive exclusion shrinks the pool further, causing the same doctor to accumulate all weekend/Friday shifts. Skipping it lets the counter distribute fairly across every eligible doctor.
-- Vacant shifts (no available doctor) don't count for this rule
+- **All day types use the same two-pass strategy:**
+  1. First pass: try to pick from eligible doctors who did NOT work yesterday (non-consecutive preference)
+  2. Fallback: if no non-consecutive doctor is available, allow consecutive
+- This prevents long runs (e.g. Thu→Fri→Sat for the same doctor) while still allowing consecutive assignments when the pool is genuinely empty
+- Vacant shifts (no available doctor) reset the consecutive tracker
+
+**Tie-breaker — Total Shifts:**
+- Within the candidates tied at the same per-type minimum, prefer the doctor with the **fewest total shifts this month**
+- Prevents one doctor accumulating low-count shifts across weekday + Friday + weekend simultaneously
+- Final tie-breaker is random (only between doctors equal on both per-type AND total counts)
+
+**Cumulative History (per-type counter seeding):**
+- When generating a new month, each doctor's per-type counters are initialized from:
+  - `baseline` (frozen paper records, set per-doctor)
+  - PLUS the sum of all that doctor's shifts from every prior schedule in the app
+- Then normalized by subtracting the group minimum so balancing works smoothly
+- Result: month-to-month balance auto-corrects without manual intervention
 
 **Constraint Hierarchy:**
 

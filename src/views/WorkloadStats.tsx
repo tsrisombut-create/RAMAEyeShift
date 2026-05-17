@@ -1,10 +1,11 @@
 import { useState, useMemo, Fragment } from 'react';
 import { useDataStore } from '../store/DataStore';
 import { ResidencyYear, residencyYearBadgeColor, residencyYearShortName, getDoctorInitial } from '../models';
-import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, Save, Check } from 'lucide-react';
 
 export default function WorkloadStats() {
-  const { doctors, schedules, holidays } = useDataStore();
+  const { doctors, schedules, holidays, saveWorkloadSnapshots } = useDataStore();
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -13,11 +14,21 @@ export default function WorkloadStats() {
   const engMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   const stats = useMemo(() => {
-    const currentMonthSchedules = schedules.filter(s => s.month === selectedMonth && s.year === selectedYear);
-    
+    // Deduplicate: if Firestore has multiple schedules for the same month/year/residency
+    // (can happen from regeneration), keep only the latest (by createdAt) per residency year.
+    const dedupe = (scheds: typeof schedules) => {
+      const byYear = new Map<ResidencyYear, typeof scheds[0]>();
+      [...scheds].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).forEach(s => {
+        s.selectedYears.forEach(ry => { if (!byYear.has(ry)) byYear.set(ry, s); });
+      });
+      return Array.from(new Set(byYear.values()));
+    };
+
+    const currentMonthSchedules = dedupe(schedules.filter(s => s.month === selectedMonth && s.year === selectedYear));
+
     const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
     const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
-    const prevMonthSchedules = schedules.filter(s => s.month === prevMonth && s.year === prevYear);
+    const prevMonthSchedules = dedupe(schedules.filter(s => s.month === prevMonth && s.year === prevYear));
 
     const data = doctors
       .filter(d => filterYears.has(d.residencyYear))
@@ -108,7 +119,9 @@ export default function WorkloadStats() {
         return {
           doctor: doc,
           shiftsThisMonth,
-          weekdayShiftsPrev: `${weekdayShiftsPrev}+${specialShiftsPrev}`,
+          weekdayShiftsPrev,
+          specialShiftsPrev,
+          weekdayShiftsPrevLabel: `${weekdayShiftsPrev}+${specialShiftsPrev}`,
           shiftsWeekend,
           shiftsWeekdayHoliday,
           shiftsInLongHoliday3,
@@ -134,6 +147,36 @@ export default function WorkloadStats() {
       else next.add(ry);
       return next;
     });
+  };
+
+  const handleSaveSnapshot = async () => {
+    if (saveState !== 'idle') return;
+    const allRows = Object.values(stats).flat();
+    if (allRows.length === 0) return;
+    setSaveState('saving');
+    try {
+      await saveWorkloadSnapshots(allRows.map(r => ({
+        doctorId: r.doctor.id,
+        doctorName: r.doctor.name,
+        residencyYear: r.doctor.residencyYear,
+        entry: {
+          month: selectedMonth,
+          year: selectedYear,
+          shiftsThisMonth: r.shiftsThisMonth,
+          weekdayShiftsPrev: r.weekdayShiftsPrev,
+          specialShiftsPrev: r.specialShiftsPrev,
+          shiftsWeekend: r.shiftsWeekend,
+          shiftsWeekdayHoliday: r.shiftsWeekdayHoliday,
+          shiftsInLongHoliday3: r.shiftsInLongHoliday3,
+          shiftsInExtraLongHoliday: r.shiftsInExtraLongHoliday,
+        },
+      })));
+      setSaveState('saved');
+      setTimeout(() => setSaveState('idle'), 2000);
+    } catch (err) {
+      console.error('Error saving snapshot:', err);
+      setSaveState('idle');
+    }
   };
 
   return (
@@ -171,7 +214,7 @@ export default function WorkloadStats() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', alignItems: 'center' }}>
         {[ResidencyYear.year1, ResidencyYear.year2, ResidencyYear.year3].map(ry => {
           const isSel = filterYears.has(ry);
           const color = residencyYearBadgeColor(ry);
@@ -185,6 +228,27 @@ export default function WorkloadStats() {
             </button>
           )
         })}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={handleSaveSnapshot}
+          disabled={saveState !== 'idle' || Object.values(stats).flat().length === 0}
+          style={{
+            padding: '8px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 'bold',
+            border: 'none',
+            background: saveState === 'saved' ? '#27AE60' : '#2E5BFF',
+            color: 'white',
+            cursor: saveState === 'idle' ? 'pointer' : 'default',
+            opacity: Object.values(stats).flat().length === 0 ? 0.5 : 1,
+            display: 'flex', alignItems: 'center', gap: '6px',
+            transition: 'background 0.2s'
+          }}
+        >
+          {saveState === 'saved'
+            ? <><Check size={14} /> Saved</>
+            : saveState === 'saving'
+              ? <><Save size={14} /> Saving...</>
+              : <><Save size={14} /> Save Snapshot</>}
+        </button>
       </div>
 
       <div style={{ background: 'var(--bg-card)', borderRadius: '24px', overflowX: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.05)', border: '1px solid var(--border)' }}>
@@ -211,7 +275,7 @@ export default function WorkloadStats() {
                       {residencyYearShortName(ry)} GROUP
                     </td>
                   </tr>
-                  {group.map(({ doctor, shiftsThisMonth, weekdayShiftsPrev, shiftsWeekend, shiftsWeekdayHoliday, shiftsInLongHoliday3, shiftsInExtraLongHoliday }) => (
+                  {group.map(({ doctor, shiftsThisMonth, weekdayShiftsPrevLabel, shiftsWeekend, shiftsWeekdayHoliday, shiftsInLongHoliday3, shiftsInExtraLongHoliday }) => (
                     <tr key={doctor.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }} className="hover-bg">
                       <td style={{ padding: '14px 20px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -225,7 +289,7 @@ export default function WorkloadStats() {
                         <span style={{ fontSize: '16px', fontWeight: '800', color: '#2E5BFF' }}>{shiftsThisMonth}</span>
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>{weekdayShiftsPrev}</span>
+                        <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>{weekdayShiftsPrevLabel}</span>
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{ fontSize: '14px', fontWeight: '600', color: '#E74C3C' }}>{shiftsWeekend}</span>

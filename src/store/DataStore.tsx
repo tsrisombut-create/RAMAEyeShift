@@ -2,7 +2,29 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { ResidencyYear, type Doctor, type ShiftSchedule, type PublicHoliday } from '../models';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../firebase';
-import { collection, doc, getDocs, setDoc, deleteDoc, Timestamp, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, Timestamp, query, where } from 'firebase/firestore';
+
+// One snapshot row for a doctor at a specific month/year.
+export interface WorkloadSnapshotEntry {
+  month: number;
+  year: number;
+  shiftsThisMonth: number;
+  weekdayShiftsPrev: number;
+  specialShiftsPrev: number;
+  shiftsWeekend: number;
+  shiftsWeekdayHoliday: number;
+  shiftsInLongHoliday3: number;
+  shiftsInExtraLongHoliday: number;
+  savedAt: Date;
+}
+
+// Payload passed in when saving a snapshot — one item per doctor.
+export interface WorkloadSnapshotPayload {
+  doctorId: string;
+  doctorName: string;
+  residencyYear: ResidencyYear;
+  entry: Omit<WorkloadSnapshotEntry, 'savedAt'>;
+}
 
 interface DataStoreContextType {
   doctors: Doctor[];
@@ -21,6 +43,7 @@ interface DataStoreContextType {
   updateAssignment: (scheduleId: string, day: number, doctorId: string | null) => void;
   generateLineMessage: (monthSchedules: ShiftSchedule[], filterYears?: Set<ResidencyYear>) => string;
   generateCombinedCSV: (month: number, year: number) => string;
+  saveWorkloadSnapshots: (payloads: WorkloadSnapshotPayload[]) => Promise<void>;
 }
 
 const DataStoreContext = createContext<DataStoreContextType | undefined>(undefined);
@@ -387,6 +410,33 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return lines.join("\n");
   };
 
+  // Append one snapshot entry per doctor to their workload_snapshots doc.
+  // Each doctor gets one doc (id = doctorId) containing a `snapshots` array
+  // that grows over time — historical archive, never overwritten.
+  const saveWorkloadSnapshots = async (payloads: WorkloadSnapshotPayload[]) => {
+    const savedAt = new Date();
+    await Promise.all(payloads.map(async (p) => {
+      const ref = doc(db, "workload_snapshots", p.doctorId);
+      const existing = await getDoc(ref);
+      const prevSnapshots: WorkloadSnapshotEntry[] = existing.exists()
+        ? (existing.data().snapshots || []).map((s: WorkloadSnapshotEntry & { savedAt: Timestamp | Date }) => ({
+            ...s,
+            savedAt: s.savedAt instanceof Timestamp ? s.savedAt.toDate() : s.savedAt,
+          }))
+        : [];
+      const newEntry: WorkloadSnapshotEntry = { ...p.entry, savedAt };
+      await setDoc(ref, {
+        doctorId: p.doctorId,
+        doctorName: p.doctorName,
+        residencyYear: p.residencyYear,
+        snapshots: [...prevSnapshots, newEntry].map(s => ({
+          ...s,
+          savedAt: Timestamp.fromDate(s.savedAt),
+        })),
+      });
+    }));
+  };
+
   const generateCombinedCSV = (month: number, year: number): string => {
     const monthSchedules = schedules.filter(s => s.month === month && s.year === year);
     if (monthSchedules.length === 0) return "";
@@ -412,7 +462,7 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       addDoctor, updateDoctor, deleteDoctor,
       addHoliday, deleteHoliday, setHolidays: setHolidaysWithSync,
       generateSchedule, generateSchedulesBatch, deleteSchedule, deleteScheduleByYear, updateAssignment,
-      generateLineMessage, generateCombinedCSV
+      generateLineMessage, generateCombinedCSV, saveWorkloadSnapshots
     }}>
       {children}
     </DataStoreContext.Provider>

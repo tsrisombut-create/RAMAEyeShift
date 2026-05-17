@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { useDataStore } from '../store/DataStore';
 import { ResidencyYear, residencyYearBadgeColor, residencyYearShortName, getDoctorInitial } from '../models';
 import type { Doctor, ShiftSchedule } from '../models';
-import { BarChart3, Shuffle, Trash2, CalendarX, X, MessageSquare, Download, CheckCircle2, UserX, Check, AlertCircle, Copy } from 'lucide-react';
+import { BarChart3, Shuffle, Trash2, CalendarX, X, MessageSquare, Download, CheckCircle2, UserX, Check, AlertCircle, Copy, Lock } from 'lucide-react';
+
+const ADMIN_PASSWORD = "fuckshit";
 
 export default function ShiftScheduleView() {
   const { schedules, generateSchedulesBatch, deleteSchedule, deleteScheduleByYear, updateAssignment, doctors, generateLineMessage, generateCombinedCSV, holidays } = useDataStore();
@@ -24,6 +26,28 @@ export default function ShiftScheduleView() {
   const [copied, setCopied] = useState(false);
   const [lineFilterYears, setLineFilterYears] = useState<Set<ResidencyYear>>(new Set([ResidencyYear.year1, ResidencyYear.year2, ResidencyYear.year3]));
   const [deleteTarget, setDeleteTarget] = useState<ResidencyYear | 'all' | null>(null);
+
+  // Password gate for protected actions (generate, delete, swap)
+  const [pendingAction, setPendingAction] = useState<{ action: () => void; label: string } | null>(null);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
+
+  const requirePassword = (label: string, action: () => void) => {
+    setPendingAction({ action, label });
+    setPasswordInput('');
+    setPasswordError(false);
+  };
+
+  const submitPassword = () => {
+    if (passwordInput === ADMIN_PASSWORD) {
+      pendingAction?.action();
+      setPendingAction(null);
+      setPasswordInput('');
+      setPasswordError(false);
+    } else {
+      setPasswordError(true);
+    }
+  };
 
 
   const currentSchedules = schedules.filter(s => s.month === selectedMonth && s.year === selectedYear);
@@ -84,6 +108,21 @@ export default function ShiftScheduleView() {
 
   const shiftCountFor = (docId: string, sched: ShiftSchedule) => sched.assignments.filter(a => a.doctorId === docId).length;
 
+  // True if the given day in this schedule is a public holiday
+  const isHolidayDay = (sched: ShiftSchedule, day: number) =>
+    holidays.some(h => {
+      const hd = new Date(h.date);
+      return hd.getFullYear() === sched.year && hd.getMonth() === sched.month - 1 && hd.getDate() === day;
+    });
+
+  // Categorize a shift into one of: 'hol' (Sat/Sun OR any public holiday), 'fri', 'wkday'
+  const categorizeShift = (sched: ShiftSchedule, day: number): 'hol' | 'fri' | 'wkday' => {
+    const dow = new Date(sched.year, sched.month - 1, day).getDay();
+    if (dow === 0 || dow === 6 || isHolidayDay(sched, day)) return 'hol';
+    if (dow === 5) return 'fri';
+    return 'wkday';
+  };
+
   const renderStats = (monthSchedules: ShiftSchedule[]) => {
     // Deduplicate: one schedule per residency year (latest wins if duplicates exist in Firestore)
     const schedByYear = new Map<ResidencyYear, ShiftSchedule>();
@@ -116,9 +155,9 @@ export default function ShiftScheduleView() {
                   const total = shiftCountFor(doc.id, sched);
                   let weekend = 0, friday = 0, weekday = 0;
                   sched.assignments.filter(a => a.doctorId === doc.id).forEach(a => {
-                    const dow = new Date(sched.year, sched.month - 1, a.day).getDay();
-                    if (dow === 0 || dow === 6) weekend++;
-                    else if (dow === 5) friday++;
+                    const cat = categorizeShift(sched, a.day);
+                    if (cat === 'hol') weekend++;
+                    else if (cat === 'fri') friday++;
                     else weekday++;
                   });
                   return (
@@ -186,7 +225,7 @@ export default function ShiftScheduleView() {
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
              <button
-               onClick={(e) => { e.stopPropagation(); setDeleteTarget('all'); }}
+               onClick={(e) => { e.stopPropagation(); requirePassword('Delete All Schedules', () => setDeleteTarget('all')); }}
                style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(231,76,60,0.08)', color: '#E74C3C', border: '1px solid rgba(231,76,60,0.25)', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' }}
              >
                <Trash2 size={10} /> All
@@ -197,7 +236,7 @@ export default function ShiftScheduleView() {
                    {residencyYearShortName(g.year)}
                  </span>
                  <button
-                   onClick={(e) => { e.stopPropagation(); setDeleteTarget(g.year); }}
+                   onClick={(e) => { e.stopPropagation(); requirePassword(`Delete ${residencyYearShortName(g.year)} Schedule`, () => setDeleteTarget(g.year)); }}
                    style={{ background: 'rgba(0,0,0,0.1)', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.2)', padding: '3px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                  >
                    <Trash2 size={10} color="white" />
@@ -254,7 +293,7 @@ export default function ShiftScheduleView() {
                     return (
                       <td
                         key={g.year}
-                        onClick={() => sched && setEditTarget({ schedule: sched, day: dayNum })}
+                        onClick={() => sched && requirePassword('Swap Shift', () => setEditTarget({ schedule: sched, day: dayNum }))}
                         style={{ padding: '10px 12px', cursor: 'pointer' }}
                       >
                         {doc ? (
@@ -380,9 +419,9 @@ export default function ShiftScheduleView() {
                  const total = docAssignments.length;
                  let wkday = 0, fri = 0, hol = 0;
                  docAssignments.forEach(a => {
-                   const d = new Date(schedule.year, schedule.month - 1, a.day).getDay();
-                   if (d === 0 || d === 6) hol++;
-                   else if (d === 5) fri++;
+                   const cat = categorizeShift(schedule, a.day);
+                   if (cat === 'hol') hol++;
+                   else if (cat === 'fri') fri++;
                    else wkday++;
                  });
 
@@ -686,6 +725,58 @@ export default function ShiftScheduleView() {
     );
   };
 
+  const renderPasswordModal = () => {
+    if (!pendingAction) return null;
+    return createPortal(
+      <div
+        onClick={() => { setPendingAction(null); setPasswordInput(''); setPasswordError(false); }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', zIndex: 10001, animation: 'fadeIn 0.2s', padding: '40px 16px', overflowY: 'auto' }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '400px', borderRadius: '28px', padding: '32px 24px', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', textAlign: 'center', margin: 'auto' }}
+        >
+          <div style={{ width: '64px', height: '64px', background: 'rgba(46, 91, 255, 0.1)', color: '#2E5BFF', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+            <Lock size={28} strokeWidth={2.5} />
+          </div>
+          <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px', letterSpacing: '-0.02em' }}>Admin Password Required</h3>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+            Enter password to <strong style={{ color: 'var(--text-main)' }}>{pendingAction.label}</strong>
+          </p>
+          <input
+            type="password"
+            autoFocus
+            value={passwordInput}
+            onChange={e => { setPasswordInput(e.target.value); setPasswordError(false); }}
+            onKeyDown={e => { if (e.key === 'Enter') submitPassword(); }}
+            placeholder="Password"
+            style={{
+              width: '100%', padding: '14px 16px', borderRadius: '12px',
+              border: `1.5px solid ${passwordError ? '#E74C3C' : 'var(--border)'}`,
+              background: 'var(--bg-main)', color: 'var(--text-main)',
+              fontSize: '15px', outline: 'none', marginBottom: passwordError ? '8px' : '20px',
+              boxSizing: 'border-box', fontFamily: 'inherit',
+            }}
+          />
+          {passwordError && (
+            <div style={{ color: '#E74C3C', fontSize: '12px', fontWeight: '600', marginBottom: '16px' }}>
+              Incorrect password
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button onClick={submitPassword} style={{ background: '#2E5BFF', color: 'white', border: 'none', borderRadius: '14px', padding: '14px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>
+              Confirm
+            </button>
+            <button onClick={() => { setPendingAction(null); setPasswordInput(''); setPasswordError(false); }} style={{ background: 'var(--bg-main)', color: 'var(--text-main)', border: 'none', borderRadius: '14px', padding: '14px', fontWeight: '600', fontSize: '15px', cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '24px 16px 60px' }}>
       {renderEditModal()}
@@ -693,6 +784,7 @@ export default function ShiftScheduleView() {
       {renderForceConfirmModal()}
       {renderConfirmGenerateModal()}
       {renderDeleteConfirmModal()}
+      {renderPasswordModal()}
       
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -737,7 +829,7 @@ export default function ShiftScheduleView() {
             )
           })}
           <div style={{ flex: 1 }} />
-          <button onClick={handleGenerateClick} disabled={isGenerating || selectedYears.size === 0} style={{ background: '#2E5BFF', color: 'white', border: 'none', borderRadius: '10px', padding: '10px 16px', fontWeight: 'bold', fontSize: '14px', cursor: isGenerating || selectedYears.size === 0 ? 'default' : 'pointer', opacity: isGenerating || selectedYears.size === 0 ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <button onClick={() => requirePassword('Create New Schedule', handleGenerateClick)} disabled={isGenerating || selectedYears.size === 0} style={{ background: '#2E5BFF', color: 'white', border: 'none', borderRadius: '10px', padding: '10px 16px', fontWeight: 'bold', fontSize: '14px', cursor: isGenerating || selectedYears.size === 0 ? 'default' : 'pointer', opacity: isGenerating || selectedYears.size === 0 ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             <Shuffle size={16} />
             {isGenerating ? 'Generating...' : 'New Set'}
           </button>

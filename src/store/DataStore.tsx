@@ -156,7 +156,9 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     let lastAssignedId = prevSched?.assignments.find(a => a.day === lastDayPrev)?.doctorId ?? null;
 
     // Track shifts separately: weekday (Mon-Thu), Friday, and weekend (Sat-Sun)
-    // Initialize counts from previous month to balance across months
+    // Initialize counts from previous month to balance across months,
+    // then normalize by subtracting the group minimum so no doctor starts so far
+    // ahead that they are never selected for a shift type this month.
     const weekdayShifts = new Map<string, number>();
     const fridayShifts = new Map<string, number>();
     const weekendShifts = new Map<string, number>();
@@ -175,12 +177,23 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       weekendShifts.set(d.id, prevWeekend);
     });
 
+    // Normalize: subtract the group minimum so relative differences carry over
+    // but no doctor starts so high they are excluded from a type all month.
+    const minWkday = Math.min(...eligibleDoctors.map(d => weekdayShifts.get(d.id)!));
+    const minFri   = Math.min(...eligibleDoctors.map(d => fridayShifts.get(d.id)!));
+    const minWkend = Math.min(...eligibleDoctors.map(d => weekendShifts.get(d.id)!));
+    eligibleDoctors.forEach(d => {
+      weekdayShifts.set(d.id, weekdayShifts.get(d.id)! - minWkday);
+      fridayShifts.set(d.id,  fridayShifts.get(d.id)!  - minFri);
+      weekendShifts.set(d.id, weekendShifts.get(d.id)! - minWkend);
+    });
+
     const assignments = [];
     for (let day = 1; day <= daysInMonth; day++) {
       const dow = new Date(year, month - 1, day).getDay();
       const isFriday = dow === 5;
       const isWeekend = dow === 0 || dow === 6;
-      const isWeekdayHoliday = !isWeekend && !isFriday &&
+      const isWeekdayHoliday = !isWeekend &&
         holidays.some(h => {
           const hd = new Date(h.date);
           return hd.getFullYear() === year && hd.getMonth() === month - 1 && hd.getDate() === day;
@@ -190,28 +203,33 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         (isWeekdayHoliday || !d.offDays.includes(dow)) &&
         !d.blackoutPeriods.some(b => day >= b.startDay && day <= b.endDay);
 
-      // Pick from available non-consecutive candidates; fallback allows consecutive
       const pickBest = (pool: (typeof eligibleDoctors)): (typeof eligibleDoctors)[0] | null => {
         if (pool.length === 0) return null;
         let shiftMap: Map<string, number>;
-        if (isWeekend) {
-          shiftMap = weekendShifts;
-        } else if (isFriday) {
-          shiftMap = fridayShifts;
-        } else {
-          shiftMap = weekdayShifts;
-        }
+        if (isWeekend) shiftMap = weekendShifts;
+        else if (isFriday) shiftMap = fridayShifts;
+        else shiftMap = weekdayShifts;
         const minShifts = Math.min(...pool.map(d => shiftMap.get(d.id) ?? 0));
         const tied = pool.filter(d => (shiftMap.get(d.id) ?? 0) === minShifts);
         return tied[Math.floor(Math.random() * tied.length)];
       };
 
-      let candidates = eligibleDoctors.filter(d => isAvailable(d) && d.id !== lastAssignedId);
-      let selectedDoc = pickBest(candidates);
+      let selectedDoc: (typeof eligibleDoctors)[0] | null;
 
-      // Fallback: allow consecutive if no non-consecutive candidate is available
-      if (!selectedDoc) {
+      if (isWeekend || isFriday) {
+        // For weekends and Fridays, skip consecutive exclusion so the dedicated
+        // shift counter can freely distribute across all eligible doctors.
+        // Otherwise a doctor who just worked the previous day gets excluded,
+        // shrinking the pool and causing the same person to accumulate
+        // the same shift type repeatedly.
         selectedDoc = pickBest(eligibleDoctors.filter(d => isAvailable(d)));
+      } else {
+        // For regular weekdays (Mon-Thu), prefer non-consecutive; fall back if needed.
+        const nonConsec = eligibleDoctors.filter(d => isAvailable(d) && d.id !== lastAssignedId);
+        selectedDoc = pickBest(nonConsec);
+        if (!selectedDoc) {
+          selectedDoc = pickBest(eligibleDoctors.filter(d => isAvailable(d)));
+        }
       }
 
       assignments.push({ id: uuidv4(), day, doctorId: selectedDoc?.id ?? null, isManualOverride: false });

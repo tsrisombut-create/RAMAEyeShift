@@ -62,8 +62,9 @@ interface ShiftAssignment {
 - Ensures balance across consecutive months, not just within a month
 
 **Consecutive Shift Avoidance:**
-- First pass: Tries to find a doctor who didn't work yesterday
-- Second pass: Allows consecutive if no other option exists
+- **Regular weekdays (Mon-Thu):** Prefer non-consecutive; fall back to consecutive if needed
+- **Fridays & weekends:** Consecutive exclusion is *skipped* — the fridayShifts/weekendShifts counter handles balancing alone
+  - *Why:* Fridays and weekends usually have fewer eligible doctors. Consecutive exclusion shrinks the pool further, causing the same doctor to accumulate all weekend/Friday shifts. Skipping it lets the counter distribute fairly across every eligible doctor.
 - Vacant shifts (no available doctor) don't count for this rule
 
 **Constraint Hierarchy:**

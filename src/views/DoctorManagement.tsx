@@ -5,10 +5,11 @@ import { useDataStore } from '../store/DataStore';
 import { ResidencyYear, residencyYearBadgeColor, residencyYearShortName, dayOfWeekShortname, getDoctorInitial, type Doctor } from '../models';
 import { BlackoutCalendar } from '../components/BlackoutCalendar';
 import { v4 as uuidv4 } from 'uuid';
-import { Moon, Edit2, Trash2, Plus, Search, UserX, X, Check, ChevronRight, ChevronLeft, Info, RotateCcw, CalendarOff, CalendarCheck } from 'lucide-react';
+import { Moon, Edit2, Trash2, Plus, Search, UserX, X, Check, ChevronRight, ChevronLeft, Info, RotateCcw, CalendarOff, CalendarCheck, Save } from 'lucide-react';
 
 export default function DoctorManagement() {
-  const { doctors, deleteDoctor, addDoctor, updateDoctor, schedules, holidays } = useDataStore();
+  const { doctors, deleteDoctor, addDoctor, updateDoctor, schedules, holidays, saveWorkloadSnapshots } = useDataStore();
+  const [snapshotState, setSnapshotState] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   const [activeTab, setActiveTab] = useState<'doctors' | 'analytics'>('doctors');
   const [searchText, setSearchText] = useState('');
@@ -29,6 +30,12 @@ export default function DoctorManagement() {
   const [offDays, setOffDays] = useState<Set<number>>(new Set());
   const [blackoutDays, setBlackoutDays] = useState<number[]>([]);
   const [hasBlackout, setHasBlackout] = useState(false);
+  // Baseline historical counts (paper records) — used as "prev" in analytics
+  const [baseWeekday, setBaseWeekday] = useState<string>('');
+  const [baseWeekend, setBaseWeekend] = useState<string>('');
+  const [baseWeekdayHol, setBaseWeekdayHol] = useState<string>('');
+  const [baseLong3, setBaseLong3] = useState<string>('');
+  const [baseExtraLong, setBaseExtraLong] = useState<string>('');
   const [collapsedYears, setCollapsedYears] = useState<Set<number>>(new Set());
 
 
@@ -48,10 +55,19 @@ export default function DoctorManagement() {
   }, [schedules, doctors]);
 
   const analyticsStats = useMemo(() => {
-    const currentMonthSchedules = schedules.filter(s => s.month === selectedMonth && s.year === selectedYear);
+    // Deduplicate: if Firestore has multiple schedules for the same month/year/residency
+    // (can happen from regeneration), keep only the latest per residency year.
+    const dedupe = (scheds: typeof schedules) => {
+      const byYear = new Map<ResidencyYear, typeof scheds[0]>();
+      [...scheds].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).forEach(s => {
+        s.selectedYears.forEach(ry => { if (!byYear.has(ry)) byYear.set(ry, s); });
+      });
+      return Array.from(new Set(byYear.values()));
+    };
+    const currentMonthSchedules = dedupe(schedules.filter(s => s.month === selectedMonth && s.year === selectedYear));
     const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
     const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
-    const prevMonthSchedules = schedules.filter(s => s.month === prevMonth && s.year === prevYear);
+    const prevMonthSchedules = dedupe(schedules.filter(s => s.month === prevMonth && s.year === prevYear));
 
     const isHolidayOnly = (d: number, m: number, y: number) =>
       holidays.some(h => { const hd = new Date(h.date); return hd.getDate() === d && hd.getMonth() === m - 1 && hd.getFullYear() === y; });
@@ -78,31 +94,54 @@ export default function DoctorManagement() {
           });
         });
 
-        const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
-        const assignedDays = new Set<number>();
-        currentMonthSchedules.forEach(s => { s.assignments.filter(a => a.doctorId === doc.id).forEach(a => assignedDays.add(a.day)); });
+        // Compute holiday-related counts for a given month/year and its schedules
+        const computeHolidayCounts = (m: number, y: number, scheds: typeof schedules) => {
+          const dIM = new Date(y, m, 0).getDate();
+          const assigned = new Set<number>();
+          scheds.forEach(s => { s.assignments.filter(a => a.doctorId === doc.id).forEach(a => assigned.add(a.day)); });
 
-        let shiftsWeekend = 0, shiftsWeekdayHoliday = 0;
-        const dayTypes = Array.from({ length: daysInMonth }, (_, i) => getDayType(i + 1, selectedMonth, selectedYear));
+          const dTypes = Array.from({ length: dIM }, (_, i) => getDayType(i + 1, m, y));
+          const bks: { start: number, end: number, length: number }[] = [];
+          let blkStart = -1;
+          dTypes.forEach((type, idx) => {
+            if (type.isSpecial) { if (blkStart === -1) blkStart = idx + 1; }
+            else { if (blkStart !== -1) { bks.push({ start: blkStart, end: idx, length: idx - blkStart + 1 }); blkStart = -1; } }
+          });
+          if (blkStart !== -1) bks.push({ start: blkStart, end: dIM, length: dIM - blkStart + 1 });
 
-        const blocks: { start: number, end: number, length: number }[] = [];
-        let currentBlockStart = -1;
-        dayTypes.forEach((type, idx) => {
-          if (type.isSpecial) { if (currentBlockStart === -1) currentBlockStart = idx + 1; }
-          else { if (currentBlockStart !== -1) { blocks.push({ start: currentBlockStart, end: idx, length: idx - currentBlockStart + 1 }); currentBlockStart = -1; } }
-        });
-        if (currentBlockStart !== -1) blocks.push({ start: currentBlockStart, end: daysInMonth, length: daysInMonth - currentBlockStart + 1 });
+          let wkend = 0, wkdayHol = 0, long3 = 0, longExtra = 0;
+          assigned.forEach(day => {
+            const type = dTypes[day - 1];
+            if (type.isWeekend) wkend++;
+            if (type.isHoliday && !type.isWeekend) wkdayHol++;
+            const block = bks.find(b => day >= b.start && day <= b.end);
+            if (block) { if (block.length === 3) long3++; else if (block.length > 3) longExtra++; }
+          });
+          return { wkend, wkdayHol, long3, longExtra };
+        };
 
-        let shiftsInLongHoliday3 = 0, shiftsInExtraLongHoliday = 0;
-        assignedDays.forEach(day => {
-          const type = dayTypes[day - 1];
-          if (type.isWeekend) shiftsWeekend++;
-          if (type.isHoliday && !type.isWeekend) shiftsWeekdayHoliday++;
-          const block = blocks.find(b => day >= b.start && day <= b.end);
-          if (block) { if (block.length === 3) shiftsInLongHoliday3++; else if (block.length > 3) shiftsInExtraLongHoliday++; }
-        });
+        const cur = computeHolidayCounts(selectedMonth, selectedYear, currentMonthSchedules);
 
-        return { doctor: doc, shiftsThisMonth, weekdayShiftsPrev: `${weekdayShiftsPrev}+${specialShiftsPrev}`, shiftsWeekend, shiftsWeekdayHoliday, shiftsInLongHoliday3, shiftsInExtraLongHoliday };
+        // The "prev" portion comes from manual baselines (paper records) if set,
+        // otherwise falls back to computed prev-month counts.
+        const computedPrev = computeHolidayCounts(prevMonth, prevYear, prevMonthSchedules);
+        const b = doc.baselines || {};
+        const prevWeekend = b.weekendPrev ?? computedPrev.wkend;
+        const prevWkdayHol = b.weekdayHolidayPrev ?? computedPrev.wkdayHol;
+        const prevLong3 = b.longHoliday3Prev ?? computedPrev.long3;
+        const prevExtraLong = b.extraLongHolidayPrev ?? computedPrev.longExtra;
+        const prevWeekday = b.weekdayPrev ?? weekdayShiftsPrev;
+
+        return {
+          doctor: doc,
+          shiftsThisMonth,
+          weekdayShiftsPrev: prevWeekday, specialShiftsPrev,
+          weekdayShiftsPrevLabel: b.weekdayPrev !== undefined ? `${prevWeekday}` : `${weekdayShiftsPrev}+${specialShiftsPrev}`,
+          shiftsWeekend: cur.wkend, shiftsWeekendPrev: prevWeekend,
+          shiftsWeekdayHoliday: cur.wkdayHol, shiftsWeekdayHolidayPrev: prevWkdayHol,
+          shiftsInLongHoliday3: cur.long3, shiftsInLongHoliday3Prev: prevLong3,
+          shiftsInExtraLongHoliday: cur.longExtra, shiftsInExtraLongHolidayPrev: prevExtraLong,
+        };
       });
 
     const grouped: Record<number, typeof data> = {};
@@ -114,6 +153,40 @@ export default function DoctorManagement() {
     setFilterYears(prev => { const next = new Set(prev); if (next.has(ry)) next.delete(ry); else next.add(ry); return next; });
   };
 
+  const handleSaveSnapshot = async () => {
+    if (snapshotState !== 'idle') return;
+    const allRows = Object.values(analyticsStats).flat();
+    if (allRows.length === 0) return;
+    setSnapshotState('saving');
+    try {
+      await saveWorkloadSnapshots(allRows.map(r => ({
+        doctorId: r.doctor.id,
+        doctorName: r.doctor.name,
+        residencyYear: r.doctor.residencyYear,
+        entry: {
+          month: selectedMonth,
+          year: selectedYear,
+          shiftsThisMonth: r.shiftsThisMonth,
+          weekdayShiftsPrev: r.weekdayShiftsPrev,
+          specialShiftsPrev: r.specialShiftsPrev,
+          shiftsWeekend: r.shiftsWeekend,
+          shiftsWeekendPrev: r.shiftsWeekendPrev,
+          shiftsWeekdayHoliday: r.shiftsWeekdayHoliday,
+          shiftsWeekdayHolidayPrev: r.shiftsWeekdayHolidayPrev,
+          shiftsInLongHoliday3: r.shiftsInLongHoliday3,
+          shiftsInLongHoliday3Prev: r.shiftsInLongHoliday3Prev,
+          shiftsInExtraLongHoliday: r.shiftsInExtraLongHoliday,
+          shiftsInExtraLongHolidayPrev: r.shiftsInExtraLongHolidayPrev,
+        },
+      })));
+      setSnapshotState('saved');
+      setTimeout(() => setSnapshotState('idle'), 2000);
+    } catch (err) {
+      console.error('Error saving snapshot:', err);
+      setSnapshotState('idle');
+    }
+  };
+
   const handleOpenModal = (doc: Doctor | null = null) => {
     if (doc) {
       setEditingDoc(doc);
@@ -122,6 +195,12 @@ export default function DoctorManagement() {
       setOffDays(new Set(doc.offDays));
       setBlackoutDays(doc.blackoutPeriods.map(bp => bp.startDay));
       setHasBlackout(doc.blackoutPeriods.length > 0);
+      const b = doc.baselines || {};
+      setBaseWeekday(b.weekdayPrev?.toString() ?? '');
+      setBaseWeekend(b.weekendPrev?.toString() ?? '');
+      setBaseWeekdayHol(b.weekdayHolidayPrev?.toString() ?? '');
+      setBaseLong3(b.longHoliday3Prev?.toString() ?? '');
+      setBaseExtraLong(b.extraLongHolidayPrev?.toString() ?? '');
     } else {
       setEditingDoc(null);
       setName('');
@@ -129,12 +208,28 @@ export default function DoctorManagement() {
       setOffDays(new Set([0, 6])); // Default Sun, Sat
       setBlackoutDays([]);
       setHasBlackout(false);
+      setBaseWeekday(''); setBaseWeekend(''); setBaseWeekdayHol(''); setBaseLong3(''); setBaseExtraLong('');
     }
     setIsModalOpen(true);
   };
 
   const handleSave = () => {
     if (!name.trim()) return;
+    const parseNum = (s: string): number | undefined => {
+      const t = s.trim();
+      if (t === '') return undefined;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const baselines = {
+      weekdayPrev: parseNum(baseWeekday),
+      weekendPrev: parseNum(baseWeekend),
+      weekdayHolidayPrev: parseNum(baseWeekdayHol),
+      longHoliday3Prev: parseNum(baseLong3),
+      extraLongHolidayPrev: parseNum(baseExtraLong),
+    };
+    const hasAnyBaseline = Object.values(baselines).some(v => v !== undefined);
+
     const doc: Doctor = {
       id: editingDoc ? editingDoc.id : uuidv4(),
       name,
@@ -145,6 +240,7 @@ export default function DoctorManagement() {
         startDay: day,
         endDay: day,
       })) : [],
+      ...(hasAnyBaseline ? { baselines } : {}),
     };
 
     if (editingDoc) updateDoctor(doc);
@@ -424,7 +520,7 @@ export default function DoctorManagement() {
 
       {activeTab === 'analytics' && (<>
       {/* Analytics Year Filter */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', alignItems: 'center' }}>
         {[ResidencyYear.year1, ResidencyYear.year2, ResidencyYear.year3].map(ry => {
           const isSel = filterYears.has(ry);
           const color = residencyYearBadgeColor(ry);
@@ -434,6 +530,27 @@ export default function DoctorManagement() {
             </button>
           );
         })}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={handleSaveSnapshot}
+          disabled={snapshotState !== 'idle' || Object.values(analyticsStats).flat().length === 0}
+          style={{
+            padding: '8px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 'bold',
+            border: 'none',
+            background: snapshotState === 'saved' ? '#27AE60' : '#2E5BFF',
+            color: 'white',
+            cursor: snapshotState === 'idle' ? 'pointer' : 'default',
+            opacity: Object.values(analyticsStats).flat().length === 0 ? 0.5 : 1,
+            display: 'flex', alignItems: 'center', gap: '6px',
+            transition: 'background 0.2s'
+          }}
+        >
+          {snapshotState === 'saved'
+            ? <><Check size={14} /> Saved</>
+            : snapshotState === 'saving'
+              ? <><Save size={14} /> Saving...</>
+              : <><Save size={14} /> Save Snapshot</>}
+        </button>
       </div>
 
       {/* Analytics Table */}
@@ -461,7 +578,7 @@ export default function DoctorManagement() {
                       {residencyYearShortName(ry)} GROUP
                     </td>
                   </tr>
-                  {group.map(({ doctor, shiftsThisMonth, weekdayShiftsPrev, shiftsWeekend, shiftsWeekdayHoliday, shiftsInLongHoliday3, shiftsInExtraLongHoliday }) => (
+                  {group.map(({ doctor, shiftsThisMonth, weekdayShiftsPrevLabel, shiftsWeekend, shiftsWeekendPrev, shiftsWeekdayHoliday, shiftsWeekdayHolidayPrev, shiftsInLongHoliday3, shiftsInLongHoliday3Prev, shiftsInExtraLongHoliday, shiftsInExtraLongHolidayPrev }) => (
                     <tr key={doctor.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }} className="hover-bg">
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -472,11 +589,11 @@ export default function DoctorManagement() {
                         </div>
                       </td>
                       <td style={{ textAlign: 'center' }}><span style={{ fontSize: '15px', fontWeight: '800', color: '#2E5BFF' }}>{shiftsThisMonth}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600' }}>{weekdayShiftsPrev}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600', color: '#E74C3C' }}>{shiftsWeekend}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600', color: '#27AE60' }}>{shiftsWeekdayHoliday}</span></td>
-                      <td style={{ textAlign: 'center' }}><div style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: '6px', background: 'rgba(230, 126, 34, 0.1)', color: '#E67E22', fontSize: '13px', fontWeight: 'bold' }}>{shiftsInLongHoliday3}</div></td>
-                      <td style={{ textAlign: 'center' }}><div style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: '6px', background: 'rgba(142, 68, 173, 0.1)', color: '#8E44AD', fontSize: '13px', fontWeight: 'bold' }}>{shiftsInExtraLongHoliday}</div></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600' }}>{weekdayShiftsPrevLabel}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600', color: '#E74C3C' }}>{shiftsWeekendPrev}+{shiftsWeekend}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ fontSize: '13px', fontWeight: '600', color: '#27AE60' }}>{shiftsWeekdayHolidayPrev}+{shiftsWeekdayHoliday}</span></td>
+                      <td style={{ textAlign: 'center' }}><div style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: '6px', background: 'rgba(230, 126, 34, 0.1)', color: '#E67E22', fontSize: '13px', fontWeight: 'bold' }}>{shiftsInLongHoliday3Prev}+{shiftsInLongHoliday3}</div></td>
+                      <td style={{ textAlign: 'center' }}><div style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: '6px', background: 'rgba(142, 68, 173, 0.1)', color: '#8E44AD', fontSize: '13px', fontWeight: 'bold' }}>{shiftsInExtraLongHolidayPrev}+{shiftsInExtraLongHoliday}</div></td>
                     </tr>
                   ))}
                 </Fragment>
@@ -689,6 +806,35 @@ export default function DoctorManagement() {
                     />
                   </div>
                 )}
+
+                {/* Historical Baselines (paper records) */}
+                <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
+                    Historical Baselines (Optional)
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                    Carry-over counts from paper records. Used as the "prev" portion in analytics. Leave blank to use auto-computed previous month.
+                  </div>
+                  {[
+                    { label: 'เวรวันธรรมดา (เดือนก่อน)', value: baseWeekday, set: setBaseWeekday },
+                    { label: 'หยุด (ส-อา)', value: baseWeekend, set: setBaseWeekend },
+                    { label: 'หยุดธรรมดา', value: baseWeekdayHol, set: setBaseWeekdayHol },
+                    { label: 'หยุดยาว (=3)', value: baseLong3, set: setBaseLong3 },
+                    { label: 'หยุดยาววว (>3)', value: baseExtraLong, set: setBaseExtraLong },
+                  ].map(({ label, value, set }) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                      <label style={{ flex: 1, fontSize: '12px', color: 'var(--text-muted)' }}>{label}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={value}
+                        onChange={e => set(e.target.value)}
+                        placeholder="auto"
+                        style={{ width: '90px', padding: '8px 10px', borderRadius: '8px', border: '1.5px solid var(--border)', background: 'var(--bg-main)', color: 'var(--text-main)', fontSize: '13px', textAlign: 'center', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Action Buttons */}

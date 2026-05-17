@@ -12,9 +12,13 @@ export interface WorkloadSnapshotEntry {
   weekdayShiftsPrev: number;
   specialShiftsPrev: number;
   shiftsWeekend: number;
+  shiftsWeekendPrev: number;
   shiftsWeekdayHoliday: number;
+  shiftsWeekdayHolidayPrev: number;
   shiftsInLongHoliday3: number;
+  shiftsInLongHoliday3Prev: number;
   shiftsInExtraLongHoliday: number;
+  shiftsInExtraLongHolidayPrev: number;
   savedAt: Date;
 }
 

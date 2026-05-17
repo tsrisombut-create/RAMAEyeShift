@@ -25,12 +25,23 @@ export interface BlackoutPeriod {
   endDay: number;
 }
 
+// Manually-entered historical cumulative counts used as the "prev" portion
+// in the analytics table. Carried forward from paper records that pre-date the app.
+export interface DoctorBaselines {
+  weekdayPrev?: number;            // เวรวันธรรมดา (เดือนก่อน)
+  weekendPrev?: number;            // หยุด (ส-อา)
+  weekdayHolidayPrev?: number;     // หยุดธรรมดา
+  longHoliday3Prev?: number;       // หยุดยาว (=3)
+  extraLongHolidayPrev?: number;   // หยุดยาววว (>3)
+}
+
 export interface Doctor {
   id: string; // UUID
   name: string;
   residencyYear: ResidencyYear;
   offDays: number[]; // DayOfWeek raw values
   blackoutPeriods: BlackoutPeriod[];
+  baselines?: DoctorBaselines;
 }
 
 export interface ShiftAssignment {

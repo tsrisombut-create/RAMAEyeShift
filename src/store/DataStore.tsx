@@ -155,19 +155,32 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const lastDayPrev = new Date(prevYear, prevMonth, 0).getDate();
     let lastAssignedId = prevSched?.assignments.find(a => a.day === lastDayPrev)?.doctorId ?? null;
 
-    // Track shifts separately for weekday vs weekend load balancing
+    // Track shifts separately: weekday (Mon-Thu), Friday, and weekend (Sat-Sun)
+    // Initialize counts from previous month to balance across months
     const weekdayShifts = new Map<string, number>();
+    const fridayShifts = new Map<string, number>();
     const weekendShifts = new Map<string, number>();
     eligibleDoctors.forEach(d => {
-      weekdayShifts.set(d.id, 0);
-      weekendShifts.set(d.id, 0);
+      let prevWeekday = 0, prevFriday = 0, prevWeekend = 0;
+      if (prevSched) {
+        prevSched.assignments.filter(a => a.doctorId === d.id).forEach(a => {
+          const dow = new Date(prevYear, prevMonth - 1, a.day).getDay();
+          if (dow === 0 || dow === 6) prevWeekend++;
+          else if (dow === 5) prevFriday++;
+          else prevWeekday++;
+        });
+      }
+      weekdayShifts.set(d.id, prevWeekday);
+      fridayShifts.set(d.id, prevFriday);
+      weekendShifts.set(d.id, prevWeekend);
     });
 
     const assignments = [];
     for (let day = 1; day <= daysInMonth; day++) {
       const dow = new Date(year, month - 1, day).getDay();
+      const isFriday = dow === 5;
       const isWeekend = dow === 0 || dow === 6;
-      const isWeekdayHoliday = !isWeekend &&
+      const isWeekdayHoliday = !isWeekend && !isFriday &&
         holidays.some(h => {
           const hd = new Date(h.date);
           return hd.getFullYear() === year && hd.getMonth() === month - 1 && hd.getDate() === day;
@@ -180,7 +193,14 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // Pick from available non-consecutive candidates; fallback allows consecutive
       const pickBest = (pool: (typeof eligibleDoctors)): (typeof eligibleDoctors)[0] | null => {
         if (pool.length === 0) return null;
-        const shiftMap = isWeekend ? weekendShifts : weekdayShifts;
+        let shiftMap: Map<string, number>;
+        if (isWeekend) {
+          shiftMap = weekendShifts;
+        } else if (isFriday) {
+          shiftMap = fridayShifts;
+        } else {
+          shiftMap = weekdayShifts;
+        }
         const minShifts = Math.min(...pool.map(d => shiftMap.get(d.id) ?? 0));
         const tied = pool.filter(d => (shiftMap.get(d.id) ?? 0) === minShifts);
         return tied[Math.floor(Math.random() * tied.length)];
@@ -198,6 +218,8 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (selectedDoc) {
         if (isWeekend) {
           weekendShifts.set(selectedDoc.id, (weekendShifts.get(selectedDoc.id) ?? 0) + 1);
+        } else if (isFriday) {
+          fridayShifts.set(selectedDoc.id, (fridayShifts.get(selectedDoc.id) ?? 0) + 1);
         } else {
           weekdayShifts.set(selectedDoc.id, (weekdayShifts.get(selectedDoc.id) ?? 0) + 1);
         }

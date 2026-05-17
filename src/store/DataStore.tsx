@@ -155,14 +155,19 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const lastDayPrev = new Date(prevYear, prevMonth, 0).getDate();
     let lastAssignedId = prevSched?.assignments.find(a => a.day === lastDayPrev)?.doctorId ?? null;
 
-    // Track cumulative shift count so the least-loaded doctor is always preferred
-    const shiftCount = new Map<string, number>();
-    eligibleDoctors.forEach(d => shiftCount.set(d.id, 0));
+    // Track shifts separately for weekday vs weekend load balancing
+    const weekdayShifts = new Map<string, number>();
+    const weekendShifts = new Map<string, number>();
+    eligibleDoctors.forEach(d => {
+      weekdayShifts.set(d.id, 0);
+      weekendShifts.set(d.id, 0);
+    });
 
     const assignments = [];
     for (let day = 1; day <= daysInMonth; day++) {
       const dow = new Date(year, month - 1, day).getDay();
-      const isWeekdayHoliday = dow !== 0 && dow !== 6 &&
+      const isWeekend = dow === 0 || dow === 6;
+      const isWeekdayHoliday = !isWeekend &&
         holidays.some(h => {
           const hd = new Date(h.date);
           return hd.getFullYear() === year && hd.getMonth() === month - 1 && hd.getDate() === day;
@@ -175,8 +180,9 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // Pick from available non-consecutive candidates; fallback allows consecutive
       const pickBest = (pool: (typeof eligibleDoctors)): (typeof eligibleDoctors)[0] | null => {
         if (pool.length === 0) return null;
-        const minShifts = Math.min(...pool.map(d => shiftCount.get(d.id) ?? 0));
-        const tied = pool.filter(d => (shiftCount.get(d.id) ?? 0) === minShifts);
+        const shiftMap = isWeekend ? weekendShifts : weekdayShifts;
+        const minShifts = Math.min(...pool.map(d => shiftMap.get(d.id) ?? 0));
+        const tied = pool.filter(d => (shiftMap.get(d.id) ?? 0) === minShifts);
         return tied[Math.floor(Math.random() * tied.length)];
       };
 
@@ -190,7 +196,11 @@ export const DataStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       assignments.push({ id: uuidv4(), day, doctorId: selectedDoc?.id ?? null, isManualOverride: false });
       if (selectedDoc) {
-        shiftCount.set(selectedDoc.id, (shiftCount.get(selectedDoc.id) ?? 0) + 1);
+        if (isWeekend) {
+          weekendShifts.set(selectedDoc.id, (weekendShifts.get(selectedDoc.id) ?? 0) + 1);
+        } else {
+          weekdayShifts.set(selectedDoc.id, (weekdayShifts.get(selectedDoc.id) ?? 0) + 1);
+        }
         lastAssignedId = selectedDoc.id;
       } else {
         lastAssignedId = null;
